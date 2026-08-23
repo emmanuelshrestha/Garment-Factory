@@ -1,0 +1,11 @@
+# Live database and its journals — never committed
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups/
+
+node_modules/
+web/dist/
+*.log
+.DS_Store
+.env
