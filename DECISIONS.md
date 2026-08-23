@@ -289,6 +289,30 @@ None. All four are resolved.
 - ~~OPEN-3~~ resolved by D018.
 - ~~OPEN-4~~ resolved by D019.
 
-Non-blocking, needed later: credit terms, customer returns, cancelling an
-order after partial delivery, draft order/delivery states, product and
-customer codes. See PLAN.md §9.
+Non-blocking, needed later: credit terms, customer returns, draft
+order/delivery states, product and customer codes. See PLAN.md §9.
+
+---
+
+## OPEN-5 — Cancelling a part-delivered order — NEEDS AN OWNER DECISION
+
+Raised by the code, 2026-08-23. Not blocking: the system currently
+refuses the action with a clear message rather than guessing.
+
+An order for 500 jackets has had 200 delivered and invoiced. The customer
+then cancels the remaining 300. Three things could happen to the order:
+
+1. The remaining 300 are dropped and the order is marked closed at 200.
+   The invoice for 200 stands. Reservations for the 300 are released.
+2. The whole order is cancelled and the 200 already delivered become a
+   credit note or a return.
+3. The order stays open indefinitely until the customer confirms.
+
+Until the owner chooses, `cancelOrder` throws
+`cannot_cancel_part_delivered_order` and says "deliver or close the
+remainder instead". Option 1 looks most likely for this business, but
+option 1 needs a "close short" action that does not exist yet, and
+inventing it would be inventing a business rule.
+
+Nothing is blocked: a part-delivered order can still be delivered in
+full, and a draft or confirmed order cancels normally.
