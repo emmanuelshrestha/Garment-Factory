@@ -27,8 +27,15 @@ feature works.
 
 - Backend: `node --test`. No test framework is installed and none is
   needed — `node:test` and `node:assert/strict` are built in.
+- Run it as bare `node --test` from the project root. Passing directory
+  paths (`node --test tests/unit`) fails with MODULE_NOT_FOUND on this Node
+  version; auto-discovery works.
 - Integration tests create a fresh temp SQLite file per test, apply real
   migrations, and use real transactions.
+- `node:sqlite` returns **null-prototype** row objects, so
+  `assert.deepEqual` against a plain object literal fails on the prototype
+  even when every value matches. Compare mapped tuples or arrays of
+  primitives instead.
 - `scripts/verify-ledger.ts` recomputes on-hand for every variant from
   `stock_movements` and asserts it matches every query path. It runs as a
   test and can also be run against live data.
