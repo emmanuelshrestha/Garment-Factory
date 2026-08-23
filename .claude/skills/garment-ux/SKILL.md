@@ -61,7 +61,8 @@ Shortage must be visible **before** confirming, not discovered after.
   database stores one row per variant and never a grid.
 - No business logic in React components. Availability, shortage, and
   totals are computed by the backend and rendered by the UI.
-- Show both Bikram Sambat and AD dates wherever a date is displayed.
+- AD is the only calendar (D020). Display dates as `23 Aug 2026` so the
+  day and month cannot be misread; never `23/08/2026`.
 - Money is displayed with an explicit currency; never guess the currency.
 - The printed bill has its own print stylesheet and must fit the paper the
   owner already uses.

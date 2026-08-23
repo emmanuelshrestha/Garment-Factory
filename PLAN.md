@@ -3,7 +3,7 @@
 Status: **awaiting approval — no application code written yet**
 Date: 2026-08-23
 
-**Your confirmed decisions:** factory LAN web app · owner-only single login · no Excel/paper-bill reference files needed · stack chosen on technical merit · **hybrid build model** (tested backend core + React UI) · **SQLite** single file · printed bill shows **both Bikram Sambat and AD dates**.
+**Your confirmed decisions:** factory LAN web app · owner-only single login · no Excel/paper-bill reference files needed · stack chosen on technical merit · **hybrid build model** (tested backend core + React UI) · **SQLite** single file · printed bill shows **AD dates only** (D020).
 
 ---
 
@@ -86,7 +86,7 @@ http/           typed router, hand-written validators, error → HTTP mapping
    ↓
 services/       use-cases. Owns the DB transaction. One function = one business operation.
    ↓
-domain/         pure TypeScript: money, FX, BS dates, availability, balances, state machines
+domain/         pure TypeScript: money, FX, dates, availability, balances, state machines
    ↓
 db/             schema, migrations, prepared statements, transaction helper
 ```
@@ -116,7 +116,7 @@ Each financial document carries `..._minor INTEGER`, `currency TEXT`, and `fx_ra
 
 ### Dates
 
-`occurred_at` / `*_date` columns store **AD dates as ISO-8601 text** (canonical, sortable). **Bikram Sambat is derived** by a pure function in `domain/bs-date.ts` using a month-length lookup table, and rendered on screens and the printed bill alongside the AD date. No BS value is stored, so there is one source of truth and no possibility of the two drifting apart.
+`occurred_at` / `*_date` columns store **AD dates as ISO-8601 text** (canonical, sortable), and timestamps as ISO-8601 UTC. **AD is the only calendar in the system** (D020) — there is no Bikram Sambat conversion, stored or derived. Text rather than a numeric epoch because it sorts correctly in SQL, reads correctly in a database browser, and cannot be silently reinterpreted in another timezone. `domain/dates.ts` validates every date and rejects impossible ones such as `2023-02-29` rather than rolling them into March.
 
 *This table must be validated against dates you trust — see assumption 3 and DECISIONS.md OPEN-2.*
 
@@ -172,7 +172,7 @@ Cash and bank transfers are created `cleared`. Cheques are created `pending` and
 - `audit_log` — at, user_id, action, entity_type, entity_id, detail_json
 - `document_sequences` — doc_type, bs_fiscal_year, last_number, **UNIQUE(doc_type, bs_fiscal_year)** (D017)
 
-**Document numbering** (D017): `ORD-2082-00001`, `DEL-`, `INV-`, `PAY-`, five digits, resetting to `00001` each **Shrawan 1** independently per document type. The sequence is incremented **inside the same transaction** that creates the document, so a rollback cannot burn a number and two documents cannot share one. `order_no`, `delivery_no`, `invoice_no`, `payment_no`, `expense_no`, and `purchase_no` each carry a `UNIQUE` constraint. Because the number embeds the BS fiscal year, numbering depends on the BS conversion table being correct — see OPEN-2.
+**Document numbering** (D017, amended): `ORD-2026-00001`, `DEL-`, `INV-`, `PAY-`, five digits, resetting to `00001` each **1 January** independently per document type. The year is taken from the document's own date, so back-dating files a document under the correct year. The sequence is incremented **inside the same transaction** that creates the document, so a rollback cannot burn a number and two documents cannot share one. `order_no`, `delivery_no`, `invoice_no`, `payment_no`, `expense_no`, and `purchase_no` each carry a `UNIQUE` constraint.
 
 **Deferred to slice 2** (named so the schema has room; not designed yet): `production_orders`, `production_stage_events`, `cut_records`, `sew_records`, `finish_records`, `pack_records`, `rework_records`.
 
@@ -233,14 +233,14 @@ Every step follows the same order: migration → pure domain function + unit tes
 |---|---|---|
 | 0 | Skeleton: migration runner, `db/sqlite.ts`, transaction helper, test harness, owner login, Vite + Tailwind shell | app boots, owner logs in |
 | 1 | `domain/money.ts` + `domain/fx.ts` | integer-minor arithmetic, formatting, NPR conversion — tested before anything uses it |
-| 2 | `domain/bs-date.ts` | BS ↔ AD conversion, unit-tested against reference dates |
+| 2 | `domain/dates.ts` + `domain/documentNumber.ts` | date validation and arithmetic, D017 numbering, gapless across a rollback |
 | 3 | Customers | list, create, edit, deactivate |
 | 4 | Products, colours, sizes, variants | product form + bulk variant generation from selected colours × sizes |
 | 5 | Stock ledger | opening balances, adjustments with mandatory reason, **Colour × Size matrix inventory screen**, per-variant movement history |
 | 6 | Orders | draft/confirm, price snapshot with per-line override, live availability + shortage panel |
 | 7 | Allocation | allocate on confirm, release on cancel, `available` respected everywhere |
 | 8 | Deliveries | partial delivery against an order, consumes allocation, emits movements |
-| 9 | Invoices | build from selected delivery lines, immutable once issued, **printable bill with BS + AD dates** |
+| 9 | Invoices | build from selected delivery lines, immutable once issued, **printable bill** |
 | 10 | Payments | cash/bank/cheque, allocate to invoices, clear or bounce a cheque, customer statement + receivables |
 | 11 | Dashboard + basic reports | low stock, outstanding receivables, pending cheques, deliveries due |
 
@@ -270,7 +270,7 @@ Garment Factory/
 │  │  ├─ migrate.ts
 │  │  └─ migrations/001_init.sql …
 │  ├─ domain/                    # pure, no IO
-│  │  ├─ money.ts  fx.ts  bs-date.ts  stock.ts
+│  │  ├─ money.ts  fx.ts  dates.ts  stock.ts
 │  │  ├─ order.ts  invoice.ts  payment.ts
 │  ├─ services/                  # transactions live here
 │  │  ├─ stock.ts  allocation.ts  orders.ts  deliveries.ts
@@ -300,7 +300,7 @@ Backend and frontend types are kept in step by a hand-written `web/src/api.ts` m
 
 Backend: `node --test`, run by me on every change. No mocks for the database — the rules under test *are* transactional.
 
-- **Unit (`domain/`)** — money and FX arithmetic, BS date conversion, availability, order/invoice state machines, balance and allocation math. Fast, no DB.
+- **Unit (`domain/`)** — money and FX arithmetic, date validation and arithmetic, availability, order/invoice state machines, balance and allocation math. Fast, no DB.
 - **Integration (`services/`)** — fresh temp SQLite file per test, real migrations, real transactions.
 - **The tests that must exist before I call any step done:**
   - partial delivery leaves the order `partially_delivered` with correct remaining qty
@@ -311,7 +311,7 @@ Backend: `node --test`, run by me on every change. No mocks for the database —
   - stock cannot be driven negative
   - a failed mid-operation write rolls back completely — no orphan stock movement
   - allocation excludes already-allocated stock from availability
-  - BS ↔ AD conversion matches every reference date
+  - a rolled-back document does not burn its number
 - **Ledger reconciliation** — `scripts/verify-ledger.ts` recomputes on-hand for every variant from `stock_movements` and asserts it matches every query path. Runs as a test and can be run against live data.
 - **Frontend** — business logic lives in the backend, so the UI needs little testing. Vitest is available if you want it; I cannot run it, so I will not pretend to have verified it.
 - **Seed data** — ~8 products, realistic jacket colours, S–2XL, opening stock, two customers, and one worked example spanning order → partial delivery → invoice → part payment by cheque.
@@ -340,8 +340,8 @@ I have deliberately not decided these.
 
 1. **`node:sqlite` experimental status** — acceptable, given Node 22 is pinned and all SQLite use is isolated to one swappable file?
 2. **Frontend build step** — you (or whoever builds) run `npm install` and `npm run build` once per release; the factory PC then runs only Node. Acceptable?
-3. **BS conversion accuracy** — I will hand-write the BS month-length table and unit-test it. To validate it I need a few reference pairs you trust. **Please confirm what today, 2026-08-23 AD, is in BS**, plus one or two dates from your existing bills.
-4. ~~Document numbering~~ — **RESOLVED, D017:** `ORD-2082-00001` / `DEL-` / `INV-` / `PAY-`, five digits, resetting each Shrawan 1 per document type, issued from `document_sequences` inside the document's transaction.
+3. ~~BS conversion accuracy~~ — **RESOLVED, D020:** AD is the only calendar. No conversion table, no reference dates needed.
+4. ~~Document numbering~~ — **RESOLVED, D017 as amended:** `ORD-2026-00001` / `DEL-` / `INV-` / `PAY-`, five digits, resetting each 1 January per document type, issued from `document_sequences` inside the document's transaction.
 5. ~~Pricing granularity~~ — **RESOLVED, D009:** product default price plus optional per-variant override. Resolution order: variant override → product default → error.
 6. **Discounts** — invoice-level discount amount only, or per-line discounts too?
 7. ~~Invoice ↔ delivery~~ — **RESOLVED, D010:** one invoice may combine lines from several deliveries to the same customer.
@@ -349,7 +349,7 @@ I have deliberately not decided these.
 9. **Backup destination** off the factory PC — USB drive, network share, or nothing for now?
 10. **Corrections** — void-and-reissue for bad invoices, with credit notes left out of the MVP. Acceptable?
 11. **Units** — everything counted in pieces?
-12. **Bill layout** — since you're not sharing the paper bill, I'll design a clean A5/A4 bill with your company header, customer, item lines (product/colour/size/qty/rate/amount), totals, and both BS and AD dates. You can mark it up once you see it printed.
+12. **Bill layout** — since you're not sharing the paper bill, I'll design a clean A5/A4 bill with your company header, customer, item lines (product/colour/size/qty/rate/amount), totals, and the AD date. You can mark it up once you see it printed.
 
 The following came out of a review pass over this plan, where I caught myself about to decide business questions on your behalf:
 

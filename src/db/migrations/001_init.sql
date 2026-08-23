@@ -7,7 +7,7 @@
 -- Conventions
 --   money      INTEGER minor units (paisa/cents). Never REAL. See D007.
 --   fx rate    INTEGER, actual rate x 1,000,000. NPR is exactly 1000000.
---   *_date     TEXT 'YYYY-MM-DD' (AD, canonical). Bikram Sambat is derived.
+--   *_date     TEXT 'YYYY-MM-DD' (AD). AD is the only calendar in the system.
 --   *_at       TEXT ISO-8601 UTC 'YYYY-MM-DDTHH:MM:SS.sssZ'
 --   booleans   INTEGER 0 or 1, CHECK constrained
 --
@@ -133,16 +133,16 @@ CREATE INDEX idx_price_history_product ON price_history(product_id, effective_fr
 -- Document numbering (D017)
 -- ---------------------------------------------------------------------------
 
--- ORD-2082-00001 etc. The sequence resets to 1 each Shrawan 1, independently
+-- ORD-2026-00001 etc. The sequence resets to 1 each 1 January, independently
 -- per document type. Incremented inside the same transaction that creates the
 -- document, so a rollback cannot burn a number and two documents cannot share
 -- one.
 CREATE TABLE document_sequences (
-  id             INTEGER PRIMARY KEY,
-  doc_type       TEXT NOT NULL CHECK (doc_type IN ('ORD', 'DEL', 'INV', 'PAY', 'EXP', 'PUR', 'ADJ')),
-  bs_fiscal_year INTEGER NOT NULL CHECK (bs_fiscal_year BETWEEN 2000 AND 2200),
-  last_number    INTEGER NOT NULL DEFAULT 0 CHECK (last_number >= 0),
-  UNIQUE (doc_type, bs_fiscal_year)
+  id          INTEGER PRIMARY KEY,
+  doc_type    TEXT NOT NULL CHECK (doc_type IN ('ORD', 'DEL', 'INV', 'PAY', 'EXP', 'PUR', 'ADJ')),
+  doc_year    INTEGER NOT NULL CHECK (doc_year BETWEEN 2000 AND 2200),
+  last_number INTEGER NOT NULL DEFAULT 0 CHECK (last_number >= 0),
+  UNIQUE (doc_type, doc_year)
 ) STRICT;
 
 -- ---------------------------------------------------------------------------

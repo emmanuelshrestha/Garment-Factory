@@ -181,44 +181,47 @@ discovered.
 
 ---
 
-## D016 — Bikram Sambat is derived, not stored — PROPOSED
+## D016 — Bikram Sambat is derived, not stored — SUPERSEDED by D020
 
-Owner confirmed the printed bill shows both BS and AD dates.
+Original proposal: store the AD date as canonical ISO-8601 text and derive
+Bikram Sambat with a pure function using a month-length table.
 
-Proposal: store the AD date as canonical ISO-8601 text and derive BS with
-a pure function using a month-length table. Storing both risks the two
-drifting apart, and only one can then be the truth.
-
-Blocked on validation data — see OPEN-2.
+Superseded 2026-08-23 when the owner chose AD only. No BS conversion
+exists in the system. Kept for the record.
 
 
 ---
 
-## D017 — Document numbering — CONFIRMED
+## D017 — Document numbering — CONFIRMED (amended 2026-08-23)
 
 Owner decision, 2026-08-23.
 
-Format: prefix, Bikram Sambat year, five-digit sequence.
+Format: prefix, four-digit year, five-digit sequence.
 
 ```
-ORD-2082-00001
-DEL-2082-00001
-INV-2082-00001
-PAY-2082-00001
+ORD-2026-00001
+DEL-2026-00001
+INV-2026-00001
+PAY-2026-00001
 ```
 
-The sequence **resets to 00001 each Shrawan 1** (start of the Nepali
-fiscal year), independently per document type.
+**Amendment, same day:** the year was originally the Bikram Sambat fiscal
+year, resetting each Shrawan 1. When the owner chose AD-only dates (D020)
+there was no BS year left to embed, so the owner chose the **AD calendar
+year, resetting 1 January**, independently per document type.
+
+The year comes from the **document's own date**, not from today, so
+back-dating a document files it under the correct year.
 
 Consequences:
 
-- A `document_sequences` table keyed by (doc_type, bs_fiscal_year) holds
-  the last issued number. Incrementing it happens **inside the same
+- A `document_sequences` table keyed by `(doc_type, doc_year)` holds the
+  last issued number. Incrementing it happens **inside the same
   transaction** that creates the document, so a rollback cannot burn a
   number and two documents cannot share one.
-- Numbering depends on knowing which BS fiscal year a date falls in, which
-  depends on the BS conversion table. This makes OPEN-2 a hard blocker for
-  numbering as well as for printing.
+- Five digits is a hard limit of 99,999 documents of one type per year.
+  Exceeding it throws rather than silently widening the format, because a
+  wider number would sort differently from the existing ones.
 - UNIQUE constraint on the document number column of every document table.
 
 ---
@@ -256,13 +259,33 @@ calculation.
 
 ---
 
+## D020 — AD is the only calendar — CONFIRMED
+
+Owner decision, 2026-08-23: "you can keep the date as AD."
+
+Dates are stored as `'YYYY-MM-DD'` text and timestamps as ISO-8601 UTC.
+There is no Bikram Sambat conversion anywhere in the system — not stored,
+not derived, not displayed. Screens and the printed bill show AD only,
+formatted `23 Aug 2026` so the day and month can never be misread.
+
+Consequences:
+
+- `domain/bs-date.ts` and its calendar table were deleted, not disabled.
+- D016 is superseded and D017's year is the AD calendar year.
+- OPEN-2 is resolved: no reference dates are needed.
+- Text rather than a numeric epoch, because text sorts correctly in SQL,
+  reads correctly in a database browser, and cannot be silently
+  reinterpreted in another timezone.
+
+---
+
 ## Open decisions blocking Step 0
 
+None. All four are resolved.
+
 - ~~OPEN-1~~ resolved by D017.
-- **OPEN-2 — THE ONLY REMAINING BLOCKER.** Bikram Sambat reference dates
-  to validate the conversion table against. Now doubly blocking: document
-  numbering (D017) embeds the BS year and resets on Shrawan 1, so both the
-  printed bill and every document number depend on this being right.
+- ~~OPEN-2~~ resolved by D020 — AD only, so no Bikram Sambat reference
+  dates are needed.
 - ~~OPEN-3~~ resolved by D018.
 - ~~OPEN-4~~ resolved by D019.
 
