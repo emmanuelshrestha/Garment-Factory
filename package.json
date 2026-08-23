@@ -9,8 +9,8 @@
   "scripts": {
     "start": "node src/main.ts",
     "migrate": "node src/db/migrate.ts",
-    "test": "node --test tests/unit tests/integration",
-    "test:watch": "node --test --watch tests/unit tests/integration",
+    "test": "node --test",
+    "test:watch": "node --test --watch",
     "seed": "node scripts/seed.ts",
     "backup": "node scripts/backup.ts",
     "verify-ledger": "node scripts/verify-ledger.ts"
