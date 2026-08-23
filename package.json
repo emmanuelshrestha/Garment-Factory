@@ -12,6 +12,7 @@
     "test": "node --test",
     "test:watch": "node --test --watch",
     "seed": "node scripts/seed.ts",
+    "seed:demo": "node scripts/seed.ts --demo",
     "backup": "node scripts/backup.ts",
     "verify-ledger": "node scripts/verify-ledger.ts"
   },

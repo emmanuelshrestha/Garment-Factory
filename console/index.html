@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Garment Factory — operator console</title>
+    <style>
+      /* One file, no build step, no dependencies. The approved React interface
+         replaces this; it exists so the sales flow can be used and checked now. */
+      :root {
+        color-scheme: light;
+        --ink: #16181d;
+        --ink-soft: #5b616e;
+        --line: #d9dce3;
+        --paper: #ffffff;
+        --ground: #f2f3f6;
+        --accent: #26418f;
+        --red: #b3261e;
+        --red-bg: #fdecea;
+        --amber: #8a5a00;
+        --amber-bg: #fdf3df;
+        --green: #1a6c3f;
+        --green-bg: #e9f5ec;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--ground);
+        color: var(--ink);
+        font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+        /* Quantities and money are read in columns all day: line the digits up. */
+        font-variant-numeric: tabular-nums;
+      }
+      header {
+        background: var(--paper);
+        border-bottom: 1px solid var(--line);
+        padding: 14px 24px;
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+      header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+      header p { margin: 3px 0 0; font-size: 12.5px; color: var(--ink-soft); }
+      nav { display: flex; gap: 4px; margin-top: 12px; }
+      nav button {
+        font: inherit;
+        border: 1px solid transparent;
+        background: none;
+        color: var(--ink-soft);
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      nav button[aria-current="true"] { background: var(--ground); color: var(--ink); font-weight: 600; }
+      nav button:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      main { padding: 24px; max-width: 1180px; }
+      section.panel {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+      }
+      h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 14px; }
+      h3 { font-size: 15px; margin: 22px 0 8px; }
+      table { border-collapse: collapse; width: 100%; font-size: 14px; }
+      th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+      th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 600; }
+      td.num, th.num { text-align: right; }
+      .sku { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; color: var(--ink-soft); }
+      .matrix td { text-align: center; padding: 0; }
+      .matrix th.colour { text-align: left; font-weight: 500; text-transform: none; font-size: 14px; color: var(--ink); }
+      .cell {
+        display: block;
+        padding: 9px 6px;
+        border-radius: 5px;
+        margin: 2px;
+        font-weight: 600;
+        cursor: help;
+      }
+      .cell small { display: block; font-weight: 400; font-size: 11px; opacity: 0.75; }
+      .red { background: var(--red-bg); color: var(--red); }
+      .amber { background: var(--amber-bg); color: var(--amber); }
+      .green { background: var(--green-bg); color: var(--green); }
+      .legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--ink-soft); margin-top: 12px; }
+      .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+      .legend .l-red::before { background: var(--red); }
+      .legend .l-amber::before { background: var(--amber); }
+      .legend .l-green::before { background: var(--green); }
+      .pill {
+        display: inline-block;
+        font-size: 11.5px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        background: var(--ground);
+        color: var(--ink-soft);
+        border: 1px solid var(--line);
+      }
+      .pill.confirmed { background: #e8edfa; color: var(--accent); border-color: #c3cff0; }
+      .pill.cancelled { background: var(--red-bg); color: var(--red); border-color: #f3c9c5; }
+      .pill.short { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
+      button.primary {
+        font: inherit;
+        font-weight: 600;
+        background: var(--accent);
+        color: #fff;
+        border: 1px solid var(--accent);
+        border-radius: 7px;
+        padding: 8px 15px;
+        cursor: pointer;
+      }
+      button.plain {
+        font: inherit;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 7px 13px;
+        cursor: pointer;
+      }
+      button[disabled] { opacity: 0.5; cursor: default; }
+      label { display: block; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 4px; }
+      input, select {
+        font: inherit;
+        padding: 7px 9px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--paper);
+        color: var(--ink);
+        width: 100%;
+      }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+      .row > div { flex: 1 1 170px; }
+      .row > button { flex: 0 0 auto; }
+      .note { font-size: 13px; color: var(--ink-soft); }
+      .banner { padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 14px; }
+      .banner.error { background: var(--red-bg); color: var(--red); border: 1px solid #f3c9c5; }
+      .banner.ok { background: var(--green-bg); color: var(--green); border: 1px solid #cbe6d3; }
+      .banner.warn { background: var(--amber-bg); color: var(--amber); border: 1px solid #eeddb4; }
+      .hidden { display: none; }
+      @media (max-width: 620px) { main { padding: 14px; } .row > div { flex: 1 1 100%; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Garment Factory — operator console</h1>
+      <p>
+        Interim screen for checking the sales flow on real data. Every number here is read from the
+        server; nothing is calculated in the browser.
+      </p>
+      <nav>
+        <button data-tab="stock" aria-current="true">Stock</button>
+        <button data-tab="orders">Orders</button>
+        <button data-tab="customers">Customers</button>
+      </nav>
+    </header>
+
+    <main>
+      <div id="alert" class="banner hidden"></div>
+
+      <!-- ------------------------------------------------------------ stock -->
+      <div id="tab-stock">
+        <section class="panel">
+          <h2>Finished stock</h2>
+          <div class="row">
+            <div>
+              <label for="stock-product">Product</label>
+              <select id="stock-product"></select>
+            </div>
+            <button class="plain" id="stock-refresh">Refresh</button>
+          </div>
+          <div id="stock-matrix"></div>
+          <div class="legend">
+            <span class="l-red">At or below the minimum</span>
+            <span class="l-amber">Close to the minimum</span>
+            <span class="l-green">Comfortable</span>
+          </div>
+          <p class="note" style="margin-top: 10px">
+            Each cell shows what can still be promised: on hand minus what is already reserved for
+            confirmed orders.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Needs attention</h2>
+          <div id="low-stock"></div>
+        </section>
+      </div>
+
+      <!-- ----------------------------------------------------------- orders -->
+      <div id="tab-orders" class="hidden">
+        <section class="panel">
+          <h2>Take an order</h2>
+          <div class="row">
+            <div>
+              <label for="order-customer">Customer</label>
+              <select id="order-customer"></select>
+            </div>
+            <div>
+              <label for="order-required">Needed by</label>
+              <input type="date" id="order-required" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="line-product">Product</label>
+              <select id="line-product"></select>
+            </div>
+            <div>
+              <label for="line-variant">Colour and size</label>
+              <select id="line-variant"></select>
+            </div>
+            <div style="flex: 0 1 110px">
+              <label for="line-qty">Pieces</label>
+              <input type="number" id="line-qty" min="1" step="1" value="10" />
+            </div>
+            <button class="plain" id="line-add">Add to order</button>
+          </div>
+          <div id="basket"></div>
+          <div style="margin-top: 14px">
+            <button class="primary" id="order-create" disabled>Create order</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Orders</h2>
+          <div id="order-detail"></div>
+          <div id="order-list"></div>
+        </section>
+      </div>
+
+      <!-- -------------------------------------------------------- customers -->
+      <div id="tab-customers" class="hidden">
+        <section class="panel">
+          <h2>Add a customer</h2>
+          <div class="row">
+            <div><label for="c-code">Code</label><input id="c-code" placeholder="C-004" /></div>
+            <div><label for="c-name">Name</label><input id="c-name" placeholder="Himalaya Traders" /></div>
+            <div><label for="c-phone">Phone</label><input id="c-phone" placeholder="98…" /></div>
+            <button class="primary" id="c-save">Save customer</button>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Customers</h2>
+          <div id="customer-list"></div>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      /* ------------------------------------------------------------ plumbing */
+
+      const state = { products: [], customers: [], basket: [], openOrderId: null };
+
+      function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        })[ch]);
+      }
+
+      /** Display only. Money arrives as integer minor units and stays that way. */
+      function money(minor, currency) {
+        const text = (Number(minor) / 100).toLocaleString('en-US', {
+          minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+        return currency ? `${currency} ${text}` : text;
+      }
+
+      function show(kind, message) {
+        const box = document.getElementById('alert');
+        box.className = `banner ${kind}`;
+        box.textContent = message;
+        box.scrollIntoView({ block: 'nearest' });
+      }
+
+      function clearAlert() {
+        document.getElementById('alert').className = 'banner hidden';
+      }
+
+      /**
+       * Every call goes through here so a refusal from the server is shown as
+       * the server worded it. The browser never decides what is allowed.
+       */
+      async function api(method, path, body) {
+        const response = await fetch(path, {
+          method,
+          headers: body === undefined ? {} : { 'content-type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const text = await response.text();
+        const payload = text.length ? JSON.parse(text) : null;
+        if (!response.ok) {
+          const error = new Error(payload?.message ?? `${method} ${path} failed`);
+          error.payload = payload;
+          throw error;
+        }
+        return payload;
+      }
+
+      async function run(work) {
+        try {
+          clearAlert();
+          await work();
+        } catch (error) {
+          show('error', error.message);
+        }
+      }
+
+      /* --------------------------------------------------------------- tabs */
+
+      document.querySelectorAll('nav button').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-current', String(b === button)));
+          for (const name of ['stock', 'orders', 'customers']) {
+            document.getElementById(`tab-${name}`).classList.toggle('hidden', name !== button.dataset.tab);
+          }
+          clearAlert();
+        });
+      });
+
+      /* -------------------------------------------------------------- stock */
+
+      async function loadStockMatrix() {
+        const productId = document.getElementById('stock-product').value;
+        const target = document.getElementById('stock-matrix');
+        if (!productId) {
+          target.innerHTML = '<p class="note">No products yet. Add one, then generate its colour and size variants.</p>';
+          return;
+        }
+        const { stock } = await api('GET', `/api/stock?productId=${encodeURIComponent(productId)}`);
+        if (stock.length === 0) {
+          target.innerHTML = '<p class="note">This product has no colour or size variants yet.</p>';
+          return;
+        }
+
+        const sizes = [...new Set(stock.map((s) => s.size))];
+        const colours = [...new Set(stock.map((s) => s.colour))];
+        const byKey = new Map(stock.map((s) => [`${s.colour}|${s.size}`, s]));
+
+        const head = `<tr><th class="colour">Colour</th>${sizes.map((s) => `<th class="num">${escapeHtml(s)}</th>`).join('')}</tr>`;
+        const rows = colours.map((colour) => {
+          const cells = sizes.map((size) => {
+            const cell = byKey.get(`${colour}|${size}`);
+            if (!cell) return '<td></td>';
+            const title = `${cell.sku}: ${cell.onHand} on hand, ${cell.allocated} reserved, minimum ${cell.minStockQty}`;
+            return `<td><span class="cell ${cell.band}" title="${escapeHtml(title)}">${cell.available}<small>of ${cell.onHand}</small></span></td>`;
+          });
+          return `<tr><th class="colour">${escapeHtml(colour)}</th>${cells.join('')}</tr>`;
+        });
+        target.innerHTML = `<table class="matrix">${head}${rows.join('')}</table>`;
+      }
+
+      async function loadLowStock() {
+        const { lowStock } = await api('GET', '/api/stock/low');
+        const target = document.getElementById('low-stock');
+        if (lowStock.length === 0) {
+          target.innerHTML = '<p class="note">Everything is above its minimum.</p>';
+          return;
+        }
+        target.innerHTML = `<table>
+          <tr><th>SKU</th><th>Product</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">Minimum</th><th>Band</th></tr>
+          ${lowStock.map((s) => `<tr>
+            <td class="sku">${escapeHtml(s.sku)}</td>
+            <td>${escapeHtml(s.productName)} · ${escapeHtml(s.colour)} ${escapeHtml(s.size)}</td>
+            <td class="num">${s.onHand}</td><td class="num">${s.allocated}</td><td class="num">${s.minStockQty}</td>
+            <td><span class="pill ${s.band === 'red' ? 'cancelled' : 'short'}">${s.band === 'red' ? 'At minimum' : 'Getting low'}</span></td>
+          </tr>`).join('')}
+        </table>`;
+      }
+
+      /* ---------------------------------------------------------- customers */
+
+      async function loadCustomers() {
+        const { customers } = await api('GET', '/api/customers');
+        state.customers = customers;
+
+        document.getElementById('order-customer').innerHTML = customers
+          .filter((c) => c.isActive)
+          .map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`)
+          .join('');
+
+        const target = document.getElementById('customer-list');
+        target.innerHTML = customers.length === 0
+          ? '<p class="note">No customers yet. Add the first one above.</p>'
+          : `<table><tr><th>Code</th><th>Name</th><th>Phone</th><th>Currency</th><th></th></tr>
+              ${customers.map((c) => `<tr>
+                <td class="sku">${escapeHtml(c.code)}</td>
+                <td>${escapeHtml(c.name)}</td>
+                <td>${escapeHtml(c.phone ?? '—')}</td>
+                <td>${escapeHtml(c.defaultCurrency)}</td>
+                <td>${c.isActive ? '' : '<span class="pill">Not selling</span>'}</td>
+              </tr>`).join('')}</table>`;
+      }
+
+      document.getElementById('c-save').addEventListener('click', () => run(async () => {
+        const code = document.getElementById('c-code').value.trim();
+        const name = document.getElementById('c-name').value.trim();
+        const phone = document.getElementById('c-phone').value.trim();
+        await api('POST', '/api/customers', { code, name, phone: phone || null });
+        document.getElementById('c-code').value = '';
+        document.getElementById('c-name').value = '';
+        document.getElementById('c-phone').value = '';
+        await loadCustomers();
+        show('ok', `Saved ${name}.`);
+      }));
+
+      /* ------------------------------------------------------------ ordering */
+
+      async function loadProducts() {
+        const { products } = await api('GET', '/api/products?activeOnly=true');
+        state.products = products;
+        const options = products.map((p) => `<option value="${p.id}">${escapeHtml(p.code)} — ${escapeHtml(p.name)}</option>`).join('');
+        document.getElementById('stock-product').innerHTML = options;
+        document.getElementById('line-product').innerHTML = options;
+      }
+
+      async function loadVariantChoices() {
+        const productId = document.getElementById('line-product').value;
+        const select = document.getElementById('line-variant');
+        if (!productId) {
+          select.innerHTML = '';
+          return;
+        }
+        const { stock } = await api('GET', `/api/stock?productId=${encodeURIComponent(productId)}&activeOnly=true`);
+        select.innerHTML = stock
+          .map((s) => `<option value="${s.variantId}" data-sku="${escapeHtml(s.sku)}">${escapeHtml(s.colour)} / ${escapeHtml(s.size)} — ${s.available} available</option>`)
+          .join('');
+      }
+
+      function renderBasket() {
+        const target = document.getElementById('basket');
+        document.getElementById('order-create').disabled = state.basket.length === 0;
+        if (state.basket.length === 0) {
+          target.innerHTML = '<p class="note">Nothing added yet. Prices come from the catalogue when the order is created.</p>';
+          return;
+        }
+        target.innerHTML = `<table>
+          <tr><th>SKU</th><th class="num">Pieces</th><th></th></tr>
+          ${state.basket.map((line, index) => `<tr>
+            <td class="sku">${escapeHtml(line.sku)}</td>
+            <td class="num">${line.qtyOrdered}</td>
+            <td class="num"><button class="plain" data-remove="${index}">Remove</button></td>
+          </tr>`).join('')}
+        </table>`;
+        target.querySelectorAll('[data-remove]').forEach((button) => {
+          button.addEventListener('click', () => {
+            state.basket.splice(Number(button.dataset.remove), 1);
+            renderBasket();
+          });
+        });
+      }
+
+      document.getElementById('line-add').addEventListener('click', () => run(async () => {
+        const select = document.getElementById('line-variant');
+        const option = select.selectedOptions[0];
+        if (!option) throw new Error('Choose a colour and size first.');
+        const variantId = Number(option.value);
+        const qtyOrdered = Number(document.getElementById('line-qty').value);
+        if (!Number.isInteger(qtyOrdered) || qtyOrdered < 1) throw new Error('Pieces must be a whole number, at least 1.');
+        if (state.basket.some((line) => line.variantId === variantId)) {
+          throw new Error('That colour and size is already on this order. Remove it first to change the quantity.');
+        }
+        state.basket.push({ variantId, qtyOrdered, sku: option.dataset.sku });
+        renderBasket();
+      }));
+
+      document.getElementById('order-create').addEventListener('click', () => run(async () => {
+        const requiredDate = document.getElementById('order-required').value;
+        const { order } = await api('POST', '/api/orders', {
+          customerId: Number(document.getElementById('order-customer').value),
+          requiredDate: requiredDate || null,
+          lines: state.basket.map(({ variantId, qtyOrdered }) => ({ variantId, qtyOrdered })),
+        });
+        state.basket = [];
+        renderBasket();
+        state.openOrderId = order.id;
+        renderOrder(order, null);
+        await loadOrders();
+        show('ok', `${order.orderNo} created as a draft. Confirm it to reserve stock.`);
+      }));
+
+      function renderOrder(order, allocation) {
+        const target = document.getElementById('order-detail');
+        const shortage = order.totalShortageQty;
+        const banner = order.status === 'draft'
+          ? '<div class="banner warn">Draft. Nothing is reserved until you confirm.</div>'
+          : shortage > 0
+            ? `<div class="banner warn">Short by ${shortage} piece${shortage === 1 ? '' : 's'}. Stock on the shelf is reserved; the rest has to be produced.</div>`
+            : order.status === 'cancelled'
+              ? '<div class="banner error">Cancelled. The reserved stock has been released.</div>'
+              : '<div class="banner ok">Fully covered from finished stock.</div>';
+
+        target.innerHTML = `${banner}
+          <h3>${escapeHtml(order.orderNo)} · ${escapeHtml(order.customerName)}
+            <span class="pill ${order.status}">${escapeHtml(order.status.replace(/_/g, ' '))}</span></h3>
+          <p class="note">Ordered ${escapeHtml(order.orderDate)}${order.requiredDate ? ` · needed by ${escapeHtml(order.requiredDate)}` : ''} · ${escapeHtml(order.currency)}</p>
+          <table>
+            <tr><th>SKU</th><th class="num">Ordered</th><th class="num">Reserved</th><th class="num">Delivered</th><th class="num">Short</th><th class="num">Unit price</th><th class="num">Line total</th></tr>
+            ${order.lines.map((line) => `<tr>
+              <td class="sku">${escapeHtml(line.sku)}<br /><span class="note">${escapeHtml(line.colour)} ${escapeHtml(line.size)}</span></td>
+              <td class="num">${line.qtyOrdered}</td>
+              <td class="num">${line.qtyAllocated}</td>
+              <td class="num">${line.qtyDelivered}</td>
+              <td class="num">${line.shortageQty > 0 ? `<strong>${line.shortageQty}</strong>` : '—'}</td>
+              <td class="num">${money(line.unitPriceMinor)}</td>
+              <td class="num">${money(line.lineTotalMinor)}</td>
+            </tr>`).join('')}
+            <tr><td colspan="6"><strong>Order total</strong></td><td class="num"><strong>${money(order.totalMinor, order.currency)}</strong></td></tr>
+          </table>
+          <div class="row" style="margin-top: 14px">
+            ${order.status === 'draft' ? '<button class="primary" id="do-confirm">Confirm and reserve stock</button>' : ''}
+            ${order.status === 'confirmed' && shortage > 0 ? '<button class="plain" id="do-allocate">Reserve again</button>' : ''}
+            ${order.status === 'draft' || order.status === 'confirmed' ? '<button class="plain" id="do-cancel">Cancel order</button>' : ''}
+          </div>`;
+
+        const confirm = document.getElementById('do-confirm');
+        if (confirm) confirm.addEventListener('click', () => run(async () => {
+          const result = await api('POST', `/api/orders/${order.id}/confirm`);
+          renderOrder(result.order, result.allocation);
+          await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
+        }));
+
+        const allocate = document.getElementById('do-allocate');
+        if (allocate) allocate.addEventListener('click', () => run(async () => {
+          const result = await api('POST', `/api/orders/${order.id}/allocate`);
+          renderOrder(result.order, result.allocation);
+          await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
+        }));
+
+        const cancel = document.getElementById('do-cancel');
+        if (cancel) cancel.addEventListener('click', () => run(async () => {
+          const reason = window.prompt('Why is this order being cancelled? The reason is kept with the order.');
+          if (reason === null) return;
+          const result = await api('POST', `/api/orders/${order.id}/cancel`, { reason });
+          renderOrder(result.order, null);
+          await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
+        }));
+      }
+
+      async function loadOrders() {
+        const { orders } = await api('GET', '/api/orders?limit=25');
+        const target = document.getElementById('order-list');
+        if (orders.length === 0) {
+          target.innerHTML = '<p class="note">No orders yet.</p>';
+          return;
+        }
+        target.innerHTML = `<table>
+          <tr><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th class="num">Short</th><th class="num">Total</th><th></th></tr>
+          ${orders.map((o) => `<tr>
+            <td class="sku">${escapeHtml(o.orderNo)}</td>
+            <td>${escapeHtml(o.customerName)}</td>
+            <td>${escapeHtml(o.orderDate)}</td>
+            <td><span class="pill ${o.status}">${escapeHtml(o.status.replace(/_/g, ' '))}</span></td>
+            <td class="num">${o.totalShortageQty > 0 ? `<span class="pill short">${o.totalShortageQty}</span>` : '—'}</td>
+            <td class="num">${money(o.totalMinor, o.currency)}</td>
+            <td class="num"><button class="plain" data-open="${o.id}">Open</button></td>
+          </tr>`).join('')}
+        </table>`;
+        target.querySelectorAll('[data-open]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const { order } = await api('GET', `/api/orders/${button.dataset.open}`);
+            state.openOrderId = order.id;
+            renderOrder(order, null);
+            document.getElementById('order-detail').scrollIntoView({ block: 'nearest' });
+          }));
+        });
+      }
+
+      /* --------------------------------------------------------------- boot */
+
+      document.getElementById('stock-product').addEventListener('change', () => run(loadStockMatrix));
+      document.getElementById('stock-refresh').addEventListener('click', () => run(async () => {
+        await Promise.all([loadStockMatrix(), loadLowStock()]);
+      }));
+      document.getElementById('line-product').addEventListener('change', () => run(loadVariantChoices));
+
+      run(async () => {
+        await loadProducts();
+        await Promise.all([loadStockMatrix(), loadLowStock(), loadCustomers(), loadVariantChoices(), loadOrders()]);
+        renderBasket();
+      });
+    </script>
+  </body>
+</html>

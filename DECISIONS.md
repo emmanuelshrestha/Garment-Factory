@@ -316,3 +316,33 @@ inventing it would be inventing a business rule.
 
 Nothing is blocked: a part-delivered order can still be delivered in
 full, and a draft or confirmed order cancels normally.
+
+---
+
+## OPEN-6 — Who can reach the server, and the owner's password — NEEDS AN OWNER DECISION
+
+Raised by the code, 2026-08-23. Not blocking: the safe default is in
+place.
+
+The HTTP API is now real, and it exposes stock, prices, customer details
+and (soon) invoices and payments. Authentication is not built: the
+`users` and `sessions` tables exist, but no route checks anything. Any
+machine that can reach the port can do anything the owner can do.
+
+The default is therefore loopback: `127.0.0.1`, reachable only from the
+factory PC itself. `GARMENT_HOST=0.0.0.0` opens it to the LAN, and the
+server prints a warning when it does.
+
+Three questions for the owner:
+
+1. Will the system only ever be used from the factory PC, or does a
+   second machine (office, showroom) need to reach it?
+2. If a second machine needs it, a login screen has to exist before the
+   port is opened. That is a small slice, but it is a slice.
+3. `scripts/seed.ts` creates the owner account with a scrypt-hashed
+   password from `GARMENT_OWNER_PASSWORD`, defaulting to `change-me`.
+   The hash format is settled so nothing has to be migrated later, but
+   until a login exists that password is not checked anywhere.
+
+Sessions are the mechanism already in the schema, so implementing this
+later changes only the HTTP layer.

@@ -6,8 +6,7 @@ Phase 2 — Building slice 1 (Sales), backend first
 
 ## Current task
 
-`src/http/` — the JSON API over the finished services, then a thin working
-screen so the sales flow can be clicked through on the factory PC.
+Deliveries — the first thing that actually moves finished stock.
 
 ## Status
 
@@ -17,6 +16,10 @@ Working agreement on pace, 2026-08-23: full rigour and mutation testing on
 money, stock, invoices and payments; thin fast coverage on everything else
 (codes, names, list filters). A visible screen comes before deliveries and
 invoices so progress can be seen rather than read about.
+
+Two questions are waiting on the owner and neither blocks work: OPEN-5
+(cancelling a part-delivered order) and OPEN-6 (who can reach the server,
+and the owner's password).
 
 ## Completed
 
@@ -47,22 +50,29 @@ invoices so progress can be seen rather than read about.
 - 148 tests passing. The orders allocation and price-snapshot rules were
   mutation-tested: four deliberate breakages, all caught (one test was
   strengthened because it initially missed a repricing-at-confirmation bug)
+- `src/http/` — router, JSON I/O with a 1 MB cap, errors mapped by type;
+  routes for catalogue, customers, stock and orders; no business logic
+- `src/main.ts` — migrates on startup, loopback by default (OPEN-6)
+- `scripts/seed.ts` — owner account, `--demo` sample catalogue and stock
+- `console/index.html` — interim operator console: stock matrix with bands,
+  customers, take an order, confirm it, see the shortage. Not the approved
+  React UI; it exists so the flow can be used now
+- `scripts/smoke.sh` — drives the whole flow against a running server
+- 155 tests passing
 
 ## Next (in this order)
 
-1. `src/http/` — node:http server, tiny router, JSON errors mapped by type
-   (ValidationError 400, BusinessRuleError 409, NotFoundError 404)
-2. A thin working screen: stock matrix with bands, customers, create and
-   confirm an order, see the shortage
-3. Deliveries — partial, consumes the allocation, emits the only outward
+1. Deliveries — partial, consumes the allocation, emits the only outward
    movements
-4. Invoices — built from delivery lines, immutable once issued,
+2. Invoices — built from delivery lines, immutable once issued,
    void-and-reissue
-5. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
+3. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
    bounce restores the balance
-6. Customer balances
-7. The React `web/` UI as approved, once the owner has installed its
+4. Customer balances
+5. The React `web/` UI as approved, once the owner has installed its
    dependencies
+6. `scripts/backup.ts` and `scripts/verify-ledger.ts` (referenced by
+   package.json, not written yet)
 
 ## Blocked
 

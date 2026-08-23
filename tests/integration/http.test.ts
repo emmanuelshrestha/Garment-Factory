@@ -1,0 +1,258 @@
+/**
+ * HTTP layer tests.
+ *
+ * Two jobs only: prove the whole sales flow works through the API end to end,
+ * and prove a refusal arrives as the right status code. Business rules are
+ * tested against the services; repeating them here would be duplication.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { postRaw, startTestServer, type TestServer } from '../helpers/testServer.ts';
+
+/** Catalogue + stock built through the API, so the endpoints are exercised too. */
+async function seedCatalogue(s: TestServer, onHand: number, priceMinor = 80000) {
+  const customer = await s.request('POST', '/api/customers', { code: 'C-1', name: 'Himalaya Traders' });
+  assert.equal(customer.status, 201);
+
+  const colour = await s.request('POST', '/api/colours', { name: 'Black' });
+  assert.equal(colour.status, 201);
+
+  const sizes = await s.request('GET', '/api/sizes');
+  const sizeL = sizes.body.sizes.find((size: any) => size.name === 'L');
+
+  const product = await s.request('POST', '/api/products', {
+    code: 'JKT-A',
+    name: 'Bomber Jacket',
+    defaultPriceMinor: priceMinor,
+  });
+  assert.equal(product.status, 201);
+
+  const variants = await s.request('POST', `/api/products/${product.body.id}/variants`, {
+    colourIds: [colour.body.id],
+    sizeIds: [sizeL.id],
+    minStockQty: 20,
+  });
+  assert.equal(variants.status, 201);
+
+  const detail = await s.request('GET', `/api/products/${product.body.id}`);
+  const variantId = detail.body.variants[0].id;
+
+  if (onHand > 0) {
+    const opening = await s.request('POST', '/api/stock/opening-balance', { variantId, qty: onHand });
+    assert.equal(opening.status, 201);
+  }
+
+  return { customerId: customer.body.id, productId: product.body.id, variantId };
+}
+
+test('health check answers', async () => {
+  const s = await startTestServer();
+  try {
+    const res = await s.request('GET', '/api/health');
+    assert.equal(res.status, 200);
+    assert.equal(res.body.ok, true);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('the sales flow works end to end over HTTP', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, variantId } = await seedCatalogue(s, 22);
+
+    // 30 ordered against 22 on hand: a shortage the owner must decide about.
+    const created = await s.request('POST', '/api/orders', {
+      customerId,
+      requiredDate: '2099-01-31',
+      lines: [{ variantId, qtyOrdered: 30 }],
+    });
+    assert.equal(created.status, 201);
+    const orderId = created.body.order.id;
+    assert.match(created.body.order.orderNo, /^ORD-\d{4}-\d{5}$/);
+    assert.equal(created.body.order.status, 'draft');
+    assert.equal(created.body.order.lines[0].unitPriceMinor, 80000);
+    assert.equal(created.body.order.totalMinor, 2400000);
+
+    const confirmed = await s.request('POST', `/api/orders/${orderId}/confirm`);
+    assert.equal(confirmed.status, 200);
+    assert.equal(confirmed.body.order.status, 'confirmed');
+    assert.equal(confirmed.body.allocation.totalShortageQty, 8);
+    assert.equal(confirmed.body.order.lines[0].qtyAllocated, 22);
+    assert.equal(confirmed.body.order.lines[0].shortageQty, 8);
+
+    // Reserving is not a stock movement (D004): on hand unchanged, available nil.
+    const afterConfirm = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(afterConfirm.body.summary.onHand, 22);
+    assert.equal(afterConfirm.body.summary.allocated, 22);
+    assert.equal(afterConfirm.body.summary.available, 0);
+    assert.equal(afterConfirm.body.movements.length, 1);
+
+    const shortages = await s.request('GET', '/api/shortages');
+    assert.equal(shortages.body.shortages.length, 1);
+    assert.equal(shortages.body.shortages[0].shortageQty, 8);
+
+    // Stock arrives; re-running allocation tops up only the outstanding 8.
+    const adjustment = await s.request('POST', '/api/stock/adjustments', {
+      reasonCode: 'found',
+      note: 'ten pieces found in the packing area',
+      lines: [{ variantId, qtyDelta: 10 }],
+    });
+    assert.equal(adjustment.status, 201);
+
+    const topUp = await s.request('POST', `/api/orders/${orderId}/allocate`);
+    assert.equal(topUp.status, 200);
+    assert.equal(topUp.body.allocation.totalShortageQty, 0);
+    assert.equal(topUp.body.order.lines[0].qtyAllocated, 30);
+
+    const afterTopUp = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(afterTopUp.body.summary.onHand, 32);
+    assert.equal(afterTopUp.body.summary.allocated, 30);
+    assert.equal(afterTopUp.body.summary.available, 2);
+
+    // Cancelling frees the reservation and leaves the stock ledger alone.
+    const cancelled = await s.request('POST', `/api/orders/${orderId}/cancel`, {
+      reason: 'customer withdrew',
+    });
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.order.status, 'cancelled');
+    assert.match(cancelled.body.order.notes, /Cancelled: customer withdrew/);
+
+    const afterCancel = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(afterCancel.body.summary.onHand, 32);
+    assert.equal(afterCancel.body.summary.allocated, 0);
+    assert.equal(afterCancel.body.summary.available, 32);
+    assert.equal(afterCancel.body.movements.length, 2);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('a bad request is a 400, a missing thing is a 404, a forbidden thing is a 409', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, variantId } = await seedCatalogue(s, 5);
+
+    // 400: a quantity that is not a whole number never reaches the service.
+    const fractional = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 2.5 }],
+    });
+    assert.equal(fractional.status, 400);
+    assert.equal(fractional.body.error, 'validation_error');
+    assert.equal(fractional.body.field, 'lines[0].qtyOrdered');
+
+    // 400: a required field missing.
+    const noCustomer = await s.request('POST', '/api/orders', { lines: [{ variantId, qtyOrdered: 1 }] });
+    assert.equal(noCustomer.status, 400);
+    assert.equal(noCustomer.body.field, 'customerId');
+
+    // 400: malformed JSON.
+    const malformed = await postRaw(s.baseUrl, '/api/customers', '{"code": ');
+    assert.equal(malformed.status, 400);
+    assert.equal(malformed.body.error, 'validation_error');
+
+    // 400: a JSON array where an object is required.
+    const arrayBody = await postRaw(s.baseUrl, '/api/customers', '[1,2,3]');
+    assert.equal(arrayBody.status, 400);
+
+    // 404: an order that does not exist.
+    const missing = await s.request('GET', '/api/orders/9999');
+    assert.equal(missing.status, 404);
+    assert.equal(missing.body.error, 'not_found');
+
+    // 409: confirming twice is an illegal transition, not a validation problem.
+    const order = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 2 }],
+    });
+    const orderId = order.body.order.id;
+    assert.equal((await s.request('POST', `/api/orders/${orderId}/confirm`)).status, 200);
+    const twice = await s.request('POST', `/api/orders/${orderId}/confirm`);
+    assert.equal(twice.status, 409);
+    assert.equal(twice.body.error, 'illegal_order_transition');
+
+    // 409: a confirmed order is frozen (D005).
+    const frozen = await s.request('POST', `/api/orders/${orderId}/lines`, { variantId, qtyOrdered: 1 });
+    assert.equal(frozen.status, 409);
+    assert.equal(frozen.body.error, 'order_not_editable');
+
+    // 409: stock can never go negative.
+    const overdraw = await s.request('POST', '/api/stock/adjustments', {
+      reasonCode: 'damage',
+      note: 'more than exists',
+      lines: [{ variantId, qtyDelta: -500 }],
+    });
+    assert.equal(overdraw.status, 409);
+    assert.equal(overdraw.body.error, 'stock_cannot_go_negative');
+
+    // 400: an adjustment with no explanation is refused.
+    const noNote = await s.request('POST', '/api/stock/adjustments', {
+      reasonCode: 'damage',
+      lines: [{ variantId, qtyDelta: -1 }],
+    });
+    assert.equal(noNote.status, 400);
+
+    // 400: cancelling without a reason is refused.
+    const noReason = await s.request('POST', `/api/orders/${orderId}/cancel`, {});
+    assert.equal(noReason.status, 400);
+    assert.equal(noReason.body.field, 'reason');
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('stock quantities cannot be set directly over the API', async () => {
+  const s = await startTestServer();
+  try {
+    const { variantId } = await seedCatalogue(s, 10);
+    const attempt = await s.request('PUT', `/api/stock/${variantId}`, { qty: 999 });
+    assert.equal(attempt.status, 400);
+    assert.match(attempt.body.message, /adjustment/);
+
+    const unchanged = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(unchanged.body.summary.onHand, 10);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('the router distinguishes a wrong verb from a wrong path', async () => {
+  const s = await startTestServer();
+  try {
+    const wrongVerb = await s.request('DELETE', '/api/customers');
+    assert.equal(wrongVerb.status, 405);
+    assert.equal(wrongVerb.body.error, 'method_not_allowed');
+
+    const wrongPath = await s.request('GET', '/api/does-not-exist');
+    assert.equal(wrongPath.status, 404);
+    assert.equal(wrongPath.body.error, 'not_found');
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('an oversized body is refused before it is parsed', async () => {
+  const s = await startTestServer();
+  try {
+    const huge = `{"code":"C-9","name":"${'x'.repeat(1_100_000)}"}`;
+    const res = await postRaw(s.baseUrl, '/api/customers', huge);
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /exceeds/);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('the static console cannot serve files outside its own directory', async () => {
+  const s = await startTestServer({ staticDir: '/tmp/garment-console-does-not-exist' });
+  try {
+    for (const path of ['/../src/main.ts', '/..%2fsrc%2fmain.ts', '/%2e%2e/package.json']) {
+      const res = await s.request('GET', path);
+      assert.equal(res.status, 404, `${path} should not be served`);
+    }
+  } finally {
+    await s.cleanup();
+  }
+});
