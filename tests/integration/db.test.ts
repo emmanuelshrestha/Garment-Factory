@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { backupTo, closeDatabase, openDatabase, readOnly, transaction } from '../../src/db/sqlite.ts';
 import { migrate } from '../../src/db/migrate.ts';
@@ -239,9 +239,16 @@ test('an applied migration cannot be edited behind the database back', () => {
 test('migrating twice is a no-op', () => {
   const t = createTestDb();
   try {
+    // Every migration on disk, not a hard-coded list: adding a migration must
+    // not break this test, but skipping one must.
+    const onDisk = readdirSync(join(import.meta.dirname, '..', '..', 'src', 'db', 'migrations'))
+      .filter((name) => name.endsWith('.sql'))
+      .sort();
+
     const result = migrate(t.db);
     assert.deepEqual(result.applied, []);
-    assert.deepEqual(result.alreadyApplied, ['001_init.sql']);
+    assert.deepEqual(result.alreadyApplied, onDisk);
+    assert.ok(onDisk.includes('001_init.sql'));
   } finally {
     t.cleanup();
   }

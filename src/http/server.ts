@@ -15,6 +15,7 @@ import { sendError, sendJson, sendText } from './respond.ts';
 import { catalogueRoutes } from './routes/catalogue.ts';
 import { customerRoutes } from './routes/customers.ts';
 import { deliveryRoutes } from './routes/deliveries.ts';
+import { invoiceRoutes } from './routes/invoices.ts';
 import { orderRoutes } from './routes/orders.ts';
 import { stockRoutes } from './routes/stock.ts';
 
@@ -33,6 +34,7 @@ export function buildRouter(app: AppContext): Router {
     .addAll(catalogueRoutes(app))
     .addAll(customerRoutes(app))
     .addAll(deliveryRoutes(app))
+    .addAll(invoiceRoutes(app))
     .addAll(orderRoutes(app))
     .addAll(stockRoutes(app));
 }

@@ -407,3 +407,176 @@ test('delivery refusals arrive as the right status code', async () => {
     await s.cleanup();
   }
 });
+
+test('invoices bill delivered goods over HTTP, and void-and-reissue works', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, variantId } = await seedCatalogue(s, 30);
+    const created = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 30 }],
+    });
+    const orderId = created.body.order.id;
+    const orderLineId = created.body.order.lines[0].id;
+    await s.request('POST', `/api/orders/${orderId}/confirm`);
+
+    // Nothing delivered, nothing billable.
+    const emptyBillable = await s.request('GET', '/api/billable');
+    assert.equal(emptyBillable.status, 200);
+    assert.deepEqual(emptyBillable.body.lines, []);
+
+    const out = await s.request('POST', '/api/deliveries?dispatch=true', {
+      orderId,
+      lines: [{ orderLineId, qty: 12 }],
+    });
+    assert.equal(out.status, 201);
+    const deliveryId = out.body.delivery.id;
+
+    const billable = await s.request('GET', '/api/billable');
+    assert.equal(billable.body.lines.length, 1);
+    assert.equal(billable.body.lines[0].qty, 12);
+    assert.equal(billable.body.lines[0].unitPriceMinor, 80000);
+    assert.equal(billable.body.lines[0].description, 'Bomber Jacket / Black / L');
+
+    // Bill and issue in one step.
+    const invoice = await s.request('POST', '/api/invoices?issue=true', {
+      deliveryId,
+      invoiceDate: '2026-08-24',
+      dueDate: '2026-09-23',
+    });
+    assert.equal(invoice.status, 201);
+    assert.match(invoice.body.invoice.invoiceNo, /^INV-\d{4}-\d{5}$/);
+    assert.equal(invoice.body.invoice.status, 'issued');
+    assert.equal(invoice.body.invoice.currency, 'NPR');
+    assert.equal(invoice.body.invoice.dueDate, '2026-09-23');
+    assert.equal(invoice.body.invoice.totalMinor, 960000, '12 pieces at 800.00');
+    assert.equal(invoice.body.invoice.lines.length, 1);
+    const invoiceId = invoice.body.invoice.id;
+
+    const afterInvoice = await s.request('GET', '/api/billable');
+    assert.deepEqual(afterInvoice.body.lines, [], 'a standing invoice blocks re-billing');
+
+    // Void it, and the same delivered goods come back to be billed properly.
+    const voided = await s.request('POST', `/api/invoices/${invoiceId}/void`, {
+      reason: 'wrong due date agreed',
+    });
+    assert.equal(voided.status, 200);
+    assert.equal(voided.body.invoice.status, 'void');
+    assert.equal(voided.body.invoice.lines.length, 1, 'the lines stay for the record');
+
+    const freed = await s.request('GET', '/api/billable');
+    assert.equal(freed.body.lines.length, 1);
+
+    const reissued = await s.request('POST', '/api/invoices', {
+      deliveryLineIds: [freed.body.lines[0].deliveryLineId],
+      invoiceDate: '2026-08-24',
+      discountMinor: 60000,
+      discountReason: 'agreed for the delay',
+    });
+    assert.equal(reissued.status, 201);
+    assert.equal(reissued.body.invoice.status, 'draft');
+    assert.equal(reissued.body.invoice.totalMinor, 900000);
+
+    const issued = await s.request('POST', `/api/invoices/${reissued.body.invoice.id}/issue`);
+    assert.equal(issued.status, 200);
+    assert.equal(issued.body.invoice.status, 'issued');
+
+    const list = await s.request('GET', `/api/invoices?customerId=${customerId}`);
+    assert.equal(list.body.invoices.length, 2, 'nothing was deleted');
+    assert.deepEqual(
+      list.body.invoices.map((i: any) => i.status),
+      ['issued', 'void'],
+    );
+    const onlyIssued = await s.request('GET', '/api/invoices?status=issued');
+    assert.equal(onlyIssued.body.invoices.length, 1);
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('invoice refusals arrive as the right status code', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, variantId } = await seedCatalogue(s, 20);
+    const created = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 20 }],
+    });
+    const orderId = created.body.order.id;
+    const orderLineId = created.body.order.lines[0].id;
+    await s.request('POST', `/api/orders/${orderId}/confirm`);
+
+    // 409: a draft delivery has not left the factory.
+    const draft = await s.request('POST', '/api/deliveries', {
+      orderId,
+      lines: [{ orderLineId, qty: 5 }],
+    });
+    const tooEarly = await s.request('POST', '/api/invoices', { deliveryId: draft.body.delivery.id });
+    assert.equal(tooEarly.status, 409);
+    assert.equal(tooEarly.body.error, 'delivery_not_dispatched');
+
+    // 404: no such delivery.
+    const missing = await s.request('POST', '/api/invoices', { deliveryId: 9999 });
+    assert.equal(missing.status, 404);
+
+    // 400: neither a delivery nor its lines named.
+    const nothing = await s.request('POST', '/api/invoices', {});
+    assert.equal(nothing.status, 400);
+    assert.equal(nothing.body.field, 'deliveryId');
+
+    await s.request('POST', `/api/deliveries/${draft.body.delivery.id}/dispatch`);
+    const deliveryId = draft.body.delivery.id;
+
+    // 400: a discount with no reason (D024).
+    const silent = await s.request('POST', '/api/invoices', { deliveryId, discountMinor: 1000 });
+    assert.equal(silent.status, 400);
+    assert.equal(silent.body.field, 'discountReason');
+
+    // 409: a discount larger than the bill.
+    const tooBig = await s.request('POST', '/api/invoices', {
+      deliveryId,
+      discountMinor: 99_000_000,
+      discountReason: 'far too much',
+    });
+    assert.equal(tooBig.status, 409);
+    assert.equal(tooBig.body.error, 'discount_exceeds_invoice');
+
+    // 409: money cannot fall due before the bill exists (D022).
+    const backwards = await s.request('POST', '/api/invoices', {
+      deliveryId,
+      invoiceDate: '2026-08-24',
+      dueDate: '2026-08-01',
+    });
+    assert.equal(backwards.status, 409);
+    assert.equal(backwards.body.error, 'due_date_before_invoice_date');
+
+    const good = await s.request('POST', '/api/invoices?issue=true', { deliveryId });
+    assert.equal(good.status, 201);
+    const invoiceId = good.body.invoice.id;
+
+    // 409: an issued invoice cannot be issued again, nor billed twice.
+    const again = await s.request('POST', `/api/invoices/${invoiceId}/issue`);
+    assert.equal(again.status, 409);
+    assert.equal(again.body.error, 'invoice_already_issued');
+
+    const twice = await s.request('POST', '/api/invoices', { deliveryId });
+    assert.equal(twice.status, 409);
+    assert.equal(twice.body.error, 'nothing_left_to_invoice');
+
+    // 400: voiding without saying why.
+    const noReason = await s.request('POST', `/api/invoices/${invoiceId}/void`, {});
+    assert.equal(noReason.status, 400);
+    assert.equal(noReason.body.field, 'reason');
+
+    // 404: no such invoice.
+    const unknown = await s.request('GET', '/api/invoices/9999');
+    assert.equal(unknown.status, 404);
+
+    // Every refusal above left exactly one invoice behind.
+    const list = await s.request('GET', '/api/invoices');
+    assert.equal(list.body.invoices.length, 1);
+    assert.equal(list.body.invoices[0].invoiceNo, 'INV-2026-00001', 'numbers stay gapless');
+  } finally {
+    await s.cleanup();
+  }
+});

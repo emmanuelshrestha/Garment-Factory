@@ -336,6 +336,93 @@ of the two files, all caught.
 
 ---
 
+## D022 — The due date is typed on each invoice — CONFIRMED
+
+Owner decision, 2026-08-24. Asked: "how does the system know when a bill is
+due?" Answer: "I type the date on each bill."
+
+`invoices.due_date` is nullable. A cash sale has no due date; a credit sale
+carries the date the owner typed. There is deliberately **no** credit-terms
+column on `customers`: standing terms would be a second place for the truth
+to live, and the owner does not work that way.
+
+The only rule is that money cannot fall due before the bill exists —
+`assertDueDate` refuses `due_date < invoice_date` with
+`due_date_before_invoice_date`.
+
+Consequence for later: ageing and overdue reporting read `due_date` where it
+is present and treat a null as due on issue.
+
+---
+
+## D023 — One delivery, one invoice, by default — CONFIRMED
+
+Owner decision, 2026-08-24. Asked whether a bill covers one delivery or a
+month of them. Answer: "One delivery, one invoice."
+
+So `POST /api/invoices { deliveryId }` is the normal path, and the console
+offers exactly that. D010 is **not** revoked: passing `deliveryLineIds`
+instead bills a hand-picked set, which is how several deliveries reach one
+invoice when the owner wants that. `invoices.order_id` is filled when every
+line comes from one order and left null otherwise — the lines are the source
+of truth, the header field is a convenience.
+
+---
+
+## D024 — One discount on the whole bill, and it must say why — CONFIRMED
+
+Owner decision, 2026-08-24. Asked whether discounts are per line or per bill.
+Answer: "One discount on the whole bill."
+
+`invoices.discount_minor` with `invoices.discount_reason`. The reason is
+enforced in three places on purpose: the domain (`ValidationError` on
+`discountReason`), a table CHECK in migration 002, and therefore the API.
+An unexplained discount is the same audit hole as an unexplained stock
+adjustment, and money leaving the business unexplained is worse.
+
+A discount may take a bill to zero — a free replacement still needs
+paperwork — but not below: `discount_exceeds_invoice`.
+
+---
+
+## D025 — Delivered goods may sit on only one *standing* invoice — CONFIRMED
+
+Owner decision, 2026-08-24. Asked how re-billing after a mistake should be
+prevented from double-charging. Answer: "Database rule that ignores cancelled
+bills."
+
+The original schema had `invoice_lines.delivery_line_id INTEGER NOT NULL
+UNIQUE`. That is wrong, and it was found while building this slice: a voided
+invoice's lines keep occupying the slot for ever, which makes the approved
+correction path (D005 void-and-reissue) **impossible** — the goods could
+never be billed correctly after a wrong bill was voided.
+
+Three options were considered:
+
+1. A partial unique index. Not possible: the `void` status lives on
+   `invoices`, not `invoice_lines`, and SQLite partial indexes cannot join.
+   Mirroring the status into `invoice_lines` would need an UPDATE to an
+   append-only table, which D013 forbids.
+2. A service-only check. Rejected: it moves a money guarantee out of the
+   database.
+3. A `BEFORE INSERT` trigger. Chosen, and proved in a throwaway script
+   before the migration was written.
+
+Migration 002 rebuilds `invoice_lines` without the UNIQUE and adds trigger
+`invoice_lines_one_standing_invoice`, which aborts an insert when the same
+`delivery_line_id` already appears on an invoice whose status is not `void`.
+The service catches that abort and re-raises it as the business refusal
+`goods_already_invoiced`.
+
+Everything else about immutability is unchanged: an issued invoice cannot be
+edited or un-issued, a void needs a reason, and voided invoices keep their
+lines and their total for the record.
+
+Tested: 15 domain tests, 18 service tests, 2 HTTP tests, and 23 mutations of
+`domain/invoices.ts` and `services/invoices.ts`, all caught.
+
+---
+
 ## Open decisions blocking Step 0
 
 None. All four are resolved.

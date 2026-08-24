@@ -99,5 +99,55 @@ curl -s $B/api/stock/5 | j "console.log(j.movements.map(m=>\`   \${m.occurredAt}
 echo "== deliveries for order 2"
 curl -s "$B/api/deliveries?orderId=2" | j "console.log(j.deliveries.map(d=>\`   \${d.deliveryNo} \${d.deliveredAt} \${d.status} \${d.totalQty} pcs\`).join('\n'))"
 
+# ------------------------------------------------------------------- invoice
+# Two dispatched deliveries are sitting unbilled: DEL-…0001 (8 pcs, back-dated)
+# and DEL-…0002 (12 pcs). Billing never looks at stock or at the order — only
+# at what actually left the building.
+
+echo "== delivered but not yet billed"
+curl -s $B/api/billable | j "console.log(j.lines.map(l=>\`   \${l.deliveryNo} \${l.sku} \${l.qty} pcs at \${l.unitPriceMinor} = \${l.lineTotalMinor} \${l.currency}\`).join('\n'))"
+
+echo "== bill the first delivery and issue it, due in 30 days"
+curl -s -X POST "$B/api/invoices?issue=true" -H 'content-type: application/json' \
+  -d '{"deliveryId":1,"invoiceDate":"2026-08-24","dueDate":"2026-09-23"}' \
+  | j "console.log('  ',j.invoice.invoiceNo,j.invoice.status,'| due',j.invoice.dueDate,'| total',j.invoice.totalMinor,j.invoice.currency)"
+
+echo "== invoice refusals"
+curl -s -o /dev/null -w "  bill the same goods again -> %{http_code}\n" -X POST $B/api/invoices -H 'content-type: application/json' -d '{"deliveryId":1}'
+curl -s -o /dev/null -w "  issue an issued invoice   -> %{http_code}\n" -X POST $B/api/invoices/1/issue
+curl -s -o /dev/null -w "  discount with no reason   -> %{http_code}\n" -X POST $B/api/invoices -H 'content-type: application/json' -d '{"deliveryId":2,"discountMinor":5000}'
+curl -s -o /dev/null -w "  discount over the total   -> %{http_code}\n" -X POST $B/api/invoices -H 'content-type: application/json' -d '{"deliveryId":2,"discountMinor":99000000,"discountReason":"far too much"}'
+curl -s -o /dev/null -w "  due before the bill date  -> %{http_code}\n" -X POST $B/api/invoices -H 'content-type: application/json' -d '{"deliveryId":2,"invoiceDate":"2026-08-24","dueDate":"2026-08-01"}'
+curl -s -o /dev/null -w "  void with no reason       -> %{http_code}\n" -X POST $B/api/invoices/1/void -H 'content-type: application/json' -d '{}'
+
+echo "== bill the second delivery with an explained discount, as a draft"
+curl -s -X POST $B/api/invoices -H 'content-type: application/json' \
+  -d '{"deliveryId":2,"invoiceDate":"2026-08-24","discountMinor":50000,"discountReason":"agreed for the late shipment"}' \
+  | j "console.log('  ',j.invoice.invoiceNo,j.invoice.status,'| subtotal',j.invoice.subtotalMinor,'- discount',j.invoice.discountMinor,'=',j.invoice.totalMinor)"
+
+# D005: the correction path. Void it, and the very same delivered goods become
+# billable again — the invoice itself is kept for ever.
+echo "== void it, then bill the same goods correctly"
+curl -s -X POST $B/api/invoices/2/void -H 'content-type: application/json' -d '{"reason":"discount was not agreed"}' \
+  | j "console.log('  ',j.invoice.invoiceNo,j.invoice.status,'| lines kept',j.invoice.lines.length,'| still says',j.invoice.totalMinor)"
+curl -s $B/api/billable | j "console.log('   billable again:',j.lines.map(l=>\`\${l.deliveryNo} \${l.qty} pcs\`).join(', '))"
+curl -s -X POST "$B/api/invoices?issue=true" -H 'content-type: application/json' \
+  -d '{"deliveryId":2,"invoiceDate":"2026-08-24"}' \
+  | j "console.log('  ',j.invoice.invoiceNo,j.invoice.status,'| total',j.invoice.totalMinor)"
+
+echo "== every invoice, newest first (nothing is ever deleted)"
+curl -s $B/api/invoices | j "console.log(j.invoices.map(i=>\`   \${i.invoiceNo} \${i.invoiceDate} \${i.status} \${i.totalMinor} \${i.currency}\`).join('\n'))"
+
+echo "== a price rise must not touch an issued invoice"
+# Raise every product's price, so whichever one the invoice billed is covered.
+for pid in $(curl -s $B/api/products | j "console.log(j.products.map(p=>p.id).join(' '))"); do
+  curl -s -X POST $B/api/products/$pid/price -H 'content-type: application/json' \
+    -d '{"priceMinor":999999,"note":"smoke test rise"}' >/dev/null
+done
+curl -s $B/api/invoices/1 | j "console.log('   INV-…0001 still charges',j.invoice.lines[0].unitPriceMinor,'a piece for',j.invoice.lines[0].description)"
+
+echo "== the shelf is untouched by any of the billing above"
+curl -s $B/api/stock/5 | j "console.log('  ',JSON.stringify(j.summary),'movements',j.movements.length)"
+
 echo "== server log"
 sed 's/^/  /' /tmp/garment-smoke/server.log

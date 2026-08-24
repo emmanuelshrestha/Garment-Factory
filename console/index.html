@@ -104,6 +104,8 @@
       .pill.short { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
       .pill.partially_delivered { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
       .pill.delivered, .pill.dispatched { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
+      .pill.issued { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
+      .pill.void { background: var(--red-bg); color: var(--red); border-color: #f3c9c5; text-decoration: line-through; }
       button.primary {
         font: inherit;
         font-weight: 600;
@@ -155,6 +157,7 @@
       <nav>
         <button data-tab="stock" aria-current="true">Stock</button>
         <button data-tab="orders">Orders</button>
+        <button data-tab="billing">Billing</button>
         <button data-tab="customers">Customers</button>
       </nav>
     </header>
@@ -230,6 +233,23 @@
           <h2>Orders</h2>
           <div id="order-detail"></div>
           <div id="order-list"></div>
+        </section>
+      </div>
+
+      <!-- ---------------------------------------------------------- billing -->
+      <div id="tab-billing" class="hidden">
+        <section class="panel">
+          <h2>Delivered, not yet billed</h2>
+          <p class="note">
+            Only garments that have actually left the factory appear here. Tick a delivery and bill it.
+          </p>
+          <div id="billable-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Invoices</h2>
+          <div id="invoice-detail"></div>
+          <div id="invoice-list"></div>
         </section>
       </div>
 
@@ -315,10 +335,17 @@
       document.querySelectorAll('nav button').forEach((button) => {
         button.addEventListener('click', () => {
           document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-current', String(b === button)));
-          for (const name of ['stock', 'orders', 'customers']) {
+          for (const name of ['stock', 'orders', 'billing', 'customers']) {
             document.getElementById(`tab-${name}`).classList.toggle('hidden', name !== button.dataset.tab);
           }
           clearAlert();
+          // Billing is the one tab whose contents go stale the moment a
+          // delivery is dispatched somewhere else on the screen.
+          if (button.dataset.tab === 'billing') {
+            run(async () => {
+              await Promise.all([loadBillable(), loadInvoices()]);
+            });
+          }
         });
       });
 
@@ -665,6 +692,153 @@
         });
       }
 
+      /* ------------------------------------------------------------ billing */
+
+      /**
+       * Delivered goods with no standing invoice against them, grouped by the
+       * delivery they left on — because one delivery, one invoice is the normal
+       * case, and the server decides the price, not this screen.
+       */
+      async function loadBillable() {
+        const target = document.getElementById('billable-list');
+        if (!target) return;
+        const { lines } = await api('GET', '/api/billable');
+        if (lines.length === 0) {
+          target.innerHTML = '<p class="note">Nothing waiting. Every dispatched delivery has been billed.</p>';
+          return;
+        }
+
+        const byDelivery = new Map();
+        for (const line of lines) {
+          if (!byDelivery.has(line.deliveryId)) byDelivery.set(line.deliveryId, []);
+          byDelivery.get(line.deliveryId).push(line);
+        }
+
+        target.innerHTML = [...byDelivery.entries()].map(([deliveryId, group]) => {
+          const first = group[0];
+          const total = group.reduce((sum, line) => sum + line.lineTotalMinor, 0);
+          return `<div style="border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px">
+            <h4 style="margin: 0 0 4px">${escapeHtml(first.deliveryNo)} · ${escapeHtml(first.customerName)}</h4>
+            <p class="note">Left the factory ${escapeHtml(first.deliveredAt)} · order ${escapeHtml(first.orderNo)} · ${escapeHtml(first.currency)}</p>
+            <table>
+              <tr><th>Item</th><th class="num">Pieces</th><th class="num">Unit price</th><th class="num">Line total</th></tr>
+              ${group.map((line) => `<tr>
+                <td class="sku">${escapeHtml(line.sku)}<br /><span class="note">${escapeHtml(line.description)}</span></td>
+                <td class="num">${line.qty}</td>
+                <td class="num">${money(line.unitPriceMinor)}</td>
+                <td class="num">${money(line.lineTotalMinor)}</td>
+              </tr>`).join('')}
+              <tr><td colspan="3"><strong>To bill</strong></td><td class="num"><strong>${money(total, first.currency)}</strong></td></tr>
+            </table>
+            <div class="row" style="margin-top: 10px">
+              <div><label for="due-${deliveryId}">Due date (optional)</label><input type="date" id="due-${deliveryId}" /></div>
+              <button class="primary" data-bill="${deliveryId}">Bill and issue</button>
+              <button class="plain" data-bill-draft="${deliveryId}">Save as draft</button>
+            </div>
+          </div>`;
+        }).join('');
+
+        const bill = (deliveryId, issue) => run(async () => {
+          const due = document.getElementById(`due-${deliveryId}`);
+          const body = { deliveryId: Number(deliveryId) };
+          if (due && due.value) body.dueDate = due.value;
+          const { invoice } = await api('POST', `/api/invoices${issue ? '?issue=true' : ''}`, body);
+          await Promise.all([loadBillable(), loadInvoices()]);
+          renderInvoice(invoice);
+          show('ok', issue
+            ? `${invoice.invoiceNo} issued for ${money(invoice.totalMinor, invoice.currency)}. It cannot be changed now — a correction means voiding it.`
+            : `${invoice.invoiceNo} saved as a draft for ${money(invoice.totalMinor, invoice.currency)}.`);
+        });
+
+        target.querySelectorAll('[data-bill]').forEach((button) => {
+          button.addEventListener('click', () => bill(button.dataset.bill, true));
+        });
+        target.querySelectorAll('[data-bill-draft]').forEach((button) => {
+          button.addEventListener('click', () => bill(button.dataset.billDraft, false));
+        });
+      }
+
+      function renderInvoice(invoice) {
+        const target = document.getElementById('invoice-detail');
+        if (!target) return;
+        const banner = invoice.status === 'void'
+          ? `<div class="banner error">Voided. ${escapeHtml(invoice.voidReason ?? '')}</div>`
+          : invoice.status === 'issued'
+            ? '<div class="banner ok">Issued. This bill can no longer be changed — a correction means voiding it and billing again.</div>'
+            : '<div class="banner warn">Draft. Not yet a bill; issue it when the figures are right.</div>';
+
+        target.innerHTML = `${banner}
+          <h3>${escapeHtml(invoice.invoiceNo)} · ${escapeHtml(invoice.customerName)}
+            <span class="pill ${invoice.status}">${escapeHtml(invoice.status)}</span></h3>
+          <p class="note">Dated ${escapeHtml(invoice.invoiceDate)}${invoice.dueDate ? ` · due ${escapeHtml(invoice.dueDate)}` : ' · no due date'}${invoice.orderNo ? ` · order ${escapeHtml(invoice.orderNo)}` : ''} · ${escapeHtml(invoice.currency)}</p>
+          <table>
+            <tr><th>Item</th><th>Delivery</th><th class="num">Pieces</th><th class="num">Unit price</th><th class="num">Line total</th></tr>
+            ${invoice.lines.map((line) => `<tr>
+              <td class="sku">${escapeHtml(line.sku)}<br /><span class="note">${escapeHtml(line.description)}</span></td>
+              <td>${escapeHtml(line.deliveryNo)}</td>
+              <td class="num">${line.qty}</td>
+              <td class="num">${money(line.unitPriceMinor)}</td>
+              <td class="num">${money(line.lineTotalMinor)}</td>
+            </tr>`).join('')}
+            <tr><td colspan="4">Subtotal</td><td class="num">${money(invoice.subtotalMinor)}</td></tr>
+            ${invoice.discountMinor > 0
+              ? `<tr><td colspan="4">Discount — ${escapeHtml(invoice.discountReason ?? '')}</td><td class="num">−${money(invoice.discountMinor)}</td></tr>`
+              : ''}
+            <tr><td colspan="4"><strong>Total</strong></td><td class="num"><strong>${money(invoice.totalMinor, invoice.currency)}</strong></td></tr>
+          </table>
+          <div class="row" style="margin-top: 14px">
+            ${invoice.status === 'draft' ? `<button class="primary" data-issue="${invoice.id}">Issue this bill</button>` : ''}
+            ${invoice.status !== 'void' ? `<button class="plain" data-void="${invoice.id}">Void</button>` : ''}
+          </div>`;
+
+        const issue = target.querySelector('[data-issue]');
+        if (issue) issue.addEventListener('click', () => run(async () => {
+          const { invoice: fresh } = await api('POST', `/api/invoices/${invoice.id}/issue`);
+          renderInvoice(fresh);
+          await Promise.all([loadBillable(), loadInvoices()]);
+          show('ok', `${fresh.invoiceNo} issued. It is now fixed.`);
+        }));
+
+        const voidIt = target.querySelector('[data-void]');
+        if (voidIt) voidIt.addEventListener('click', () => run(async () => {
+          const reason = window.prompt('Why is this bill being voided? The reason is kept with it, and the invoice is never deleted.');
+          if (reason === null) return;
+          const { invoice: fresh } = await api('POST', `/api/invoices/${invoice.id}/void`, { reason });
+          renderInvoice(fresh);
+          await Promise.all([loadBillable(), loadInvoices()]);
+          show('ok', `${fresh.invoiceNo} voided. The delivered goods can be billed again.`);
+        }));
+      }
+
+      async function loadInvoices() {
+        const target = document.getElementById('invoice-list');
+        if (!target) return;
+        const { invoices } = await api('GET', '/api/invoices?limit=25');
+        if (invoices.length === 0) {
+          target.innerHTML = '<p class="note">No invoices yet.</p>';
+          return;
+        }
+        target.innerHTML = `<table>
+          <tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Due</th><th>Status</th><th class="num">Total</th><th></th></tr>
+          ${invoices.map((i) => `<tr>
+            <td class="sku">${escapeHtml(i.invoiceNo)}</td>
+            <td>${escapeHtml(i.customerName)}</td>
+            <td>${escapeHtml(i.invoiceDate)}</td>
+            <td>${i.dueDate ? escapeHtml(i.dueDate) : '—'}</td>
+            <td><span class="pill ${i.status}">${escapeHtml(i.status)}</span></td>
+            <td class="num">${money(i.totalMinor, i.currency)}</td>
+            <td class="num"><button class="plain" data-open-invoice="${i.id}">Open</button></td>
+          </tr>`).join('')}
+        </table>`;
+        target.querySelectorAll('[data-open-invoice]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const { invoice } = await api('GET', `/api/invoices/${button.dataset.openInvoice}`);
+            renderInvoice(invoice);
+            document.getElementById('invoice-detail').scrollIntoView({ block: 'nearest' });
+          }));
+        });
+      }
+
       async function loadOrders() {
         const { orders } = await api('GET', '/api/orders?limit=25');
         const target = document.getElementById('order-list');
@@ -704,7 +878,10 @@
 
       run(async () => {
         await loadProducts();
-        await Promise.all([loadStockMatrix(), loadLowStock(), loadCustomers(), loadVariantChoices(), loadOrders()]);
+        await Promise.all([
+          loadStockMatrix(), loadLowStock(), loadCustomers(), loadVariantChoices(),
+          loadOrders(), loadBillable(), loadInvoices(),
+        ]);
         renderBasket();
       });
     </script>

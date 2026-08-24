@@ -6,7 +6,8 @@ Phase 2 — Building slice 1 (Sales), backend first
 
 ## Current task
 
-Invoices — built from delivered quantities, immutable once issued.
+Payments — cash, bank transfer and cheque; a pending cheque does not reduce
+what the customer owes.
 
 ## Status
 
@@ -65,22 +66,33 @@ the owner's password) and OPEN-7 (goods coming back after dispatch).
 - 195 tests passing. The delivery rules were mutation-tested: 15 deliberate
   breakages, all caught. One real bug was found this way — an over-reserved
   variant refused every delivery (D021 sub-rule)
+- `src/db/migrations/002_invoice_due_date_and_reissue.sql` — D022 due date,
+  D024 discount reason, and D025: the outright UNIQUE on
+  `invoice_lines.delivery_line_id` replaced by a trigger that ignores voided
+  invoices, because the UNIQUE made void-and-reissue impossible
+- `src/domain/invoices.ts` + `src/services/invoices.ts` — bills dispatched
+  delivery lines at the order's snapshotted price, one customer and one
+  currency per invoice, draft then issued then frozen, void with a reason and
+  bill the same goods again; `/api/billable` answers "what still needs
+  billing"; invoice routes and a Billing tab in the console
+- `src/services/audit.ts` — invoice transitions now write `audit_log` (D013);
+  orders, deliveries and stock still do not
+- 230 tests passing. The invoice rules were mutation-tested: 23 deliberate
+  breakages, all caught. Two survivors turned out to be faulty mutations and
+  one a real gap — the explicit-lines billing path was not checking that the
+  delivery had been dispatched
 
 ## Next (in this order)
 
-1. Invoices — built from delivery lines, immutable once issued,
-   void-and-reissue
-2. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
+1. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
    bounce restores the balance
-3. Customer balances
-4. `audit_log` is not written by any service, which contradicts D013 ("every
-   transition writes an `audit_log` row with old and new value"). The table
-   exists and the status transitions are already guarded; what is missing is
-   the row. Best done once, in the services, before invoices add more
-   transitions
-5. The React `web/` UI as approved, once the owner has installed its
+2. Customer balances
+3. Retrofit `audit_log` writes onto orders, deliveries and stock. Invoices do
+   it now; the rest still contradict D013 ("every transition writes an
+   `audit_log` row with old and new value")
+4. The React `web/` UI as approved, once the owner has installed its
    dependencies
-6. `scripts/backup.ts` and `scripts/verify-ledger.ts` (referenced by
+5. `scripts/backup.ts` and `scripts/verify-ledger.ts` (referenced by
    package.json, not written yet)
 
 ## Blocked
