@@ -279,6 +279,63 @@ Consequences:
 
 ---
 
+## D021 — What a delivery may take off the shelf — CONFIRMED
+
+Decided while building the deliveries slice, 2026-08-24. Follows directly
+from D003 (ledger) and D004 (allocation is reservation); nothing here is a
+new business policy, it is those two rules made precise for dispatch.
+
+A delivery line may take:
+
+- pieces **reserved for its own order line**, plus
+- **unreserved** pieces sitting on the shelf,
+
+and never:
+
+- more than the order line still has **outstanding** (`qty_ordered −
+  qty_delivered`) → `delivery_exceeds_order`,
+- pieces **reserved for another order** → `delivery_exceeds_available_stock`,
+- more than is **physically on hand** → `delivery_exceeds_available_stock`.
+
+All-or-nothing: if one line of a multi-line delivery cannot be satisfied,
+the whole delivery is refused. A partly-loaded van is a decision for the
+owner to make explicitly by entering smaller quantities.
+
+**A delivery is two steps.** A draft is paperwork: it moves no stock and
+reserves nothing extra. Dispatch is the physical event and the only thing
+that writes to the ledger (`delivery_out`, one movement per line). The
+plan is recalculated from live figures **at dispatch**, never trusted from
+the draft, because stock can be adjusted away in between.
+
+**The movement carries the delivery's date, not today's date.** The owner
+often enters a dispatch a day or two after the goods left, and the ledger
+has to say when they actually left.
+
+**Reservations are consumed wholesale, then re-made.** Delivering 10
+against a line reserved for 22 marks the whole 22-piece reservation
+`consumed` and then re-runs `allocateOrder`, which reserves the remaining
+12 from what is left. `stock_allocations` has no partial-consumption
+concept, and giving it one would mean a second reservation code path to
+keep correct. Nothing is deleted; the consumed row stays with its
+`released_at`.
+
+**Sub-rule found by testing.** When a variant is *over*-reserved — 5 on
+the shelf but 20 reserved, because stock was adjusted out after the
+reservation was made — free stock is negative. Free stock is therefore
+floored at zero when checking the unreserved portion, so a line can still
+ship the pieces it already holds. The earlier form of this check refused
+*every* delivery of an over-reserved variant, which would have stopped the
+owner shipping goods that were on the shelf and paid for.
+
+**Dispatch order matters.** `deliveries.status` is set to `dispatched`
+*before* the order status is recomputed, because `qty_delivered` is derived
+from dispatched deliveries only.
+
+Tested: 17 domain tests, 21 service tests, 2 HTTP tests, and 15 mutations
+of the two files, all caught.
+
+---
+
 ## Open decisions blocking Step 0
 
 None. All four are resolved.
@@ -346,3 +403,33 @@ Three questions for the owner:
 
 Sessions are the mechanism already in the schema, so implementing this
 later changes only the HTTP layer.
+
+---
+
+## OPEN-7 — Goods coming back after dispatch — NEEDS AN OWNER DECISION
+
+Raised by the code, 2026-08-24. Not blocking: the system refuses the
+action with a clear message rather than guessing.
+
+Once a delivery is dispatched it cannot be cancelled. The garments have
+physically left, a stock movement exists, and D003 forbids deleting or
+editing a ledger row. `cancelDelivery` therefore throws
+`dispatched_delivery_cannot_be_cancelled` and says to record a goods
+return instead.
+
+That goods return does not exist yet, and building it needs the owner to
+say what actually happens in the factory:
+
+1. When a customer sends jackets back, do they go back into sellable
+   finished stock, or into a separate "returned, needs checking" state?
+2. Does a return always follow the delivery it came from, or can a
+   customer return goods from several deliveries in one lot?
+3. If the delivery was already invoiced, does the return produce a credit
+   note, or is the invoice voided and reissued (D005)?
+4. Who decides a returned jacket is sellable again — is that a QC step,
+   which would make it part of Slice 2?
+
+Nothing is blocked today: the owner can still correct a mistaken dispatch
+by recording a stock adjustment with a reason, which leaves both the
+original movement and the correction visible in the ledger. A proper
+returns flow is the clean answer, and it is a slice of its own.

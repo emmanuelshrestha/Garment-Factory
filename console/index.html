@@ -102,6 +102,8 @@
       .pill.confirmed { background: #e8edfa; color: var(--accent); border-color: #c3cff0; }
       .pill.cancelled { background: var(--red-bg); color: var(--red); border-color: #f3c9c5; }
       .pill.short { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
+      .pill.partially_delivered { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
+      .pill.delivered, .pill.dispatched { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
       button.primary {
         font: inherit;
         font-weight: 600;
@@ -484,6 +486,7 @@
       function renderOrder(order, allocation) {
         const target = document.getElementById('order-detail');
         const shortage = order.totalShortageQty;
+        const deliverable = order.status === 'confirmed' || order.status === 'partially_delivered';
         const banner = order.status === 'draft'
           ? '<div class="banner warn">Draft. Nothing is reserved until you confirm.</div>'
           : shortage > 0
@@ -513,7 +516,9 @@
             ${order.status === 'draft' ? '<button class="primary" id="do-confirm">Confirm and reserve stock</button>' : ''}
             ${order.status === 'confirmed' && shortage > 0 ? '<button class="plain" id="do-allocate">Reserve again</button>' : ''}
             ${order.status === 'draft' || order.status === 'confirmed' ? '<button class="plain" id="do-cancel">Cancel order</button>' : ''}
-          </div>`;
+          </div>
+          ${deliverable ? renderDeliveryForm(order) : ''}
+          <div id="delivery-list"></div>`;
 
         const confirm = document.getElementById('do-confirm');
         if (confirm) confirm.addEventListener('click', () => run(async () => {
@@ -537,6 +542,127 @@
           renderOrder(result.order, null);
           await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
         }));
+
+        if (deliverable) wireDeliveryForm(order);
+        // Not through run(): that clears the banner, and this is a background
+        // refresh that must not wipe out the message the click just produced.
+        loadDeliveries(order).catch((error) => show('error', error.message));
+      }
+
+      /* ----------------------------------------------------------- delivery */
+
+      /**
+       * What is still owed on a line. Deliberately not "what is reserved":
+       * a line can also ship against unreserved stock on the shelf, and the
+       * server decides that, not this form.
+       */
+      function outstandingQty(line) {
+        return line.qtyOrdered - line.qtyDelivered;
+      }
+
+      function renderDeliveryForm(order) {
+        const open = order.lines.filter((line) => outstandingQty(line) > 0);
+        if (open.length === 0) {
+          return '';
+        }
+        return `<h4 style="margin: 22px 0 6px">Deliver</h4>
+          <p class="note">Dispatching takes the garments off the shelf. A draft reserves nothing extra and moves nothing.</p>
+          <table>
+            <tr><th>SKU</th><th class="num">Outstanding</th><th class="num">Reserved</th><th class="num">Deliver now</th></tr>
+            ${open.map((line) => `<tr>
+              <td class="sku">${escapeHtml(line.sku)}</td>
+              <td class="num">${outstandingQty(line)}</td>
+              <td class="num">${line.qtyAllocated}</td>
+              <td class="num"><input type="number" min="0" step="1" style="width: 84px"
+                     max="${outstandingQty(line)}" value="${outstandingQty(line)}"
+                     data-deliver="${line.id}" /></td>
+            </tr>`).join('')}
+          </table>
+          <div class="row" style="margin-top: 12px">
+            <div><label for="deliver-date">Date goods leave</label><input type="date" id="deliver-date" /></div>
+            <button class="primary" id="do-dispatch">Dispatch now</button>
+            <button class="plain" id="do-draft">Save as draft</button>
+          </div>`;
+      }
+
+      /** Reads the form into the API's line shape, dropping the zeroes. */
+      function readDeliveryLines() {
+        return [...document.querySelectorAll('[data-deliver]')]
+          .map((input) => ({ orderLineId: Number(input.dataset.deliver), qty: Number(input.value) }))
+          .filter((line) => line.qty > 0);
+      }
+
+      function wireDeliveryForm(order) {
+        const date = document.getElementById('deliver-date');
+        if (!date) return;
+
+        const submit = (dispatch) => run(async () => {
+          const lines = readDeliveryLines();
+          if (lines.length === 0) {
+            show('warn', 'Enter how many pieces are going out.');
+            return;
+          }
+          const body = { orderId: order.id, lines };
+          if (date.value) body.deliveredAt = date.value;
+          const result = await api('POST', `/api/deliveries${dispatch ? '?dispatch=true' : ''}`, body);
+          const { order: fresh } = await api('GET', `/api/orders/${order.id}`);
+          renderOrder(fresh, result.allocation ?? null);
+          await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
+          show('ok', dispatch
+            ? `${result.delivery.deliveryNo} dispatched. ${result.delivery.totalQty} piece${result.delivery.totalQty === 1 ? '' : 's'} left the shelf.`
+            : `${result.delivery.deliveryNo} saved as a draft. Nothing has moved yet.`);
+        });
+
+        document.getElementById('do-dispatch').addEventListener('click', () => submit(true));
+        document.getElementById('do-draft').addEventListener('click', () => submit(false));
+      }
+
+      async function loadDeliveries(order) {
+        const target = document.getElementById('delivery-list');
+        if (!target) return;
+        const { deliveries } = await api('GET', `/api/deliveries?orderId=${order.id}`);
+        if (deliveries.length === 0) {
+          target.innerHTML = '';
+          return;
+        }
+        target.innerHTML = `<h4 style="margin: 22px 0 6px">Deliveries</h4>
+          <table>
+            <tr><th>Delivery</th><th>Date</th><th>Status</th><th class="num">Pieces</th><th></th></tr>
+            ${deliveries.map((d) => `<tr>
+              <td class="sku">${escapeHtml(d.deliveryNo)}</td>
+              <td>${escapeHtml(d.deliveredAt)}</td>
+              <td><span class="pill ${d.status}">${escapeHtml(d.status)}</span></td>
+              <td class="num">${d.totalQty}</td>
+              <td class="num">${d.status === 'draft'
+                ? `<button class="primary" data-dispatch="${d.id}">Dispatch</button>
+                   <button class="plain" data-scrap="${d.id}">Cancel</button>`
+                : ''}</td>
+            </tr>`).join('')}
+          </table>`;
+
+        const refresh = async () => {
+          const { order: fresh } = await api('GET', `/api/orders/${order.id}`);
+          renderOrder(fresh, null);
+          await Promise.all([loadOrders(), loadStockMatrix(), loadLowStock()]);
+        };
+
+        target.querySelectorAll('[data-dispatch]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const result = await api('POST', `/api/deliveries/${button.dataset.dispatch}/dispatch`);
+            await refresh();
+            show('ok', `${result.delivery.deliveryNo} dispatched. ${result.delivery.totalQty} piece${result.delivery.totalQty === 1 ? '' : 's'} left the shelf.`);
+          }));
+        });
+
+        target.querySelectorAll('[data-scrap]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const reason = window.prompt('Why is this delivery being cancelled? The reason is kept with it.');
+            if (reason === null) return;
+            await api('POST', `/api/deliveries/${button.dataset.scrap}/cancel`, { reason });
+            await refresh();
+            show('ok', 'Draft delivery cancelled. No stock moved.');
+          }));
+        });
       }
 
       async function loadOrders() {

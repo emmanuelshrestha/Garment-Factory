@@ -6,7 +6,7 @@ Phase 2 — Building slice 1 (Sales), backend first
 
 ## Current task
 
-Deliveries — the first thing that actually moves finished stock.
+Invoices — built from delivered quantities, immutable once issued.
 
 ## Status
 
@@ -17,9 +17,9 @@ money, stock, invoices and payments; thin fast coverage on everything else
 (codes, names, list filters). A visible screen comes before deliveries and
 invoices so progress can be seen rather than read about.
 
-Two questions are waiting on the owner and neither blocks work: OPEN-5
-(cancelling a part-delivered order) and OPEN-6 (who can reach the server,
-and the owner's password).
+Three questions are waiting on the owner and none blocks work: OPEN-5
+(cancelling a part-delivered order), OPEN-6 (who can reach the server, and
+the owner's password) and OPEN-7 (goods coming back after dispatch).
 
 ## Completed
 
@@ -58,17 +58,26 @@ and the owner's password).
   customers, take an order, confirm it, see the shortage. Not the approved
   React UI; it exists so the flow can be used now
 - `scripts/smoke.sh` — drives the whole flow against a running server
-- 155 tests passing
+- `src/domain/deliveries.ts` + `src/services/deliveries.ts` — D021: draft moves
+  nothing, dispatch writes the only outward movements, re-planned from live
+  figures at dispatch, reservation consumed then re-made, movement carries the
+  delivery's date; delivery routes and console controls on top
+- 195 tests passing. The delivery rules were mutation-tested: 15 deliberate
+  breakages, all caught. One real bug was found this way — an over-reserved
+  variant refused every delivery (D021 sub-rule)
 
 ## Next (in this order)
 
-1. Deliveries — partial, consumes the allocation, emits the only outward
-   movements
-2. Invoices — built from delivery lines, immutable once issued,
+1. Invoices — built from delivery lines, immutable once issued,
    void-and-reissue
-3. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
+2. Payments — cash/bank/cheque, pending cheques do not reduce receivables,
    bounce restores the balance
-4. Customer balances
+3. Customer balances
+4. `audit_log` is not written by any service, which contradicts D013 ("every
+   transition writes an `audit_log` row with old and new value"). The table
+   exists and the status transitions are already guarded; what is missing is
+   the row. Best done once, in the services, before invoices add more
+   transitions
 5. The React `web/` UI as approved, once the owner has installed its
    dependencies
 6. `scripts/backup.ts` and `scripts/verify-ledger.ts` (referenced by
@@ -81,6 +90,11 @@ Nothing.
 OPEN-5 is recorded but does not block: cancelling an order that has already
 been part-delivered is refused with a clear message until the owner decides
 what should happen to the undelivered remainder.
+
+OPEN-7 is recorded but does not block: a dispatched delivery cannot be
+cancelled, because the goods have gone and the ledger row stands. A stock
+adjustment with a reason corrects a mistaken dispatch today; a proper
+returns flow needs the owner's answers first.
 
 ## Do not work on
 

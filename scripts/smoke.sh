@@ -57,5 +57,47 @@ curl -s -X POST $B/api/orders/1/cancel -H 'content-type: application/json' -d '{
   | j "console.log('   status',j.order.status,'| notes:',j.order.notes)"
 curl -s $B/api/stock/3 | j "console.log('  ',JSON.stringify(j.summary),'movements',j.movements.length)"
 
+# ------------------------------------------------------------------ delivery
+# Variant 5 has 60 pieces in the demo seed and nothing reserved against it,
+# so this half of the script is about stock actually leaving the building.
+
+echo "== order 2: 20 of variant 5, confirmed"
+curl -s -X POST $B/api/orders -H 'content-type: application/json' \
+  -d '{"customerId":1,"lines":[{"variantId":5,"qtyOrdered":20}]}' \
+  | j "console.log('  ',j.order.orderNo,j.order.status,'line',j.order.lines[0].id)"
+curl -s -X POST $B/api/orders/2/confirm \
+  | j "console.log('   status',j.order.status,'reserved',j.order.lines[0].qtyAllocated)"
+
+echo "== draft a delivery of 8 (expect nothing to move)"
+curl -s -X POST $B/api/deliveries -H 'content-type: application/json' \
+  -d '{"orderId":2,"deliveredAt":"2026-08-20","lines":[{"orderLineId":3,"qty":8}]}' \
+  | j "console.log('  ',j.delivery.deliveryNo,j.delivery.status,'movement',j.delivery.lines[0].movementId)"
+curl -s $B/api/stock/5 | j "console.log('  ',JSON.stringify(j.summary),'movements',j.movements.length)"
+
+echo "== dispatch it (expect on hand 52, order partially delivered)"
+curl -s -X POST $B/api/deliveries/1/dispatch \
+  | j "console.log('  ',j.delivery.deliveryNo,j.delivery.status,'| order',j.order.status,'| shortage after re-reserving',j.allocation?j.allocation.totalShortageQty:'n/a')"
+curl -s $B/api/stock/5 | j "console.log('  ',JSON.stringify(j.summary),'movements',j.movements.length)"
+
+echo "== delivery refusals"
+curl -s -o /dev/null -w "  more than ordered     -> %{http_code}\n" -X POST "$B/api/deliveries?dispatch=true" -H 'content-type: application/json' -d '{"orderId":2,"lines":[{"orderLineId":3,"qty":13}]}'
+curl -s -o /dev/null -w "  cancel a dispatched   -> %{http_code}\n" -X POST $B/api/deliveries/1/cancel -H 'content-type: application/json' -d '{"reason":"wrong colour"}'
+curl -s -o /dev/null -w "  cancel a cancelled o. -> %{http_code}\n" -X POST "$B/api/deliveries?dispatch=true" -H 'content-type: application/json' -d '{"orderId":1,"lines":[{"orderLineId":1,"qty":1}]}'
+
+echo "== deliver the remaining 12 in one step (expect on hand 40, delivered)"
+curl -s -X POST "$B/api/deliveries?dispatch=true" -H 'content-type: application/json' \
+  -d '{"orderId":2,"lines":[{"orderLineId":3,"qty":12}]}' \
+  | j "console.log('  ',j.delivery.deliveryNo,j.delivery.status,'| order',j.order.status,'| reservation',j.allocation)"
+curl -s $B/api/stock/5 | j "console.log('  ',JSON.stringify(j.summary),'movements',j.movements.length)"
+
+# DEL-2026-00001 is deliberately back-dated to the 20th: the movement must
+# carry the day the goods left, not the day it was typed in (D021). That is
+# why it sorts before the opening balance the demo seed dated today.
+echo "== the ledger for variant 5, as the API returns it (oldest first)"
+curl -s $B/api/stock/5 | j "console.log(j.movements.map(m=>\`   \${m.occurredAt} \${m.movementType} \${m.qtyDelta>0?'+':''}\${m.qtyDelta} \${m.reason||''}\`).join('\n'))"
+
+echo "== deliveries for order 2"
+curl -s "$B/api/deliveries?orderId=2" | j "console.log(j.deliveries.map(d=>\`   \${d.deliveryNo} \${d.deliveredAt} \${d.status} \${d.totalQty} pcs\`).join('\n'))"
+
 echo "== server log"
 sed 's/^/  /' /tmp/garment-smoke/server.log

@@ -256,3 +256,154 @@ test('the static console cannot serve files outside its own directory', async ()
     await s.cleanup();
   }
 });
+
+test('deliveries move stock over HTTP, and only when dispatched', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, variantId } = await seedCatalogue(s, 30);
+    const created = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 30 }],
+    });
+    const orderId = created.body.order.id;
+    const orderLineId = created.body.order.lines[0].id;
+    await s.request('POST', `/api/orders/${orderId}/confirm`);
+
+    // A draft delivery is paperwork: no movement, no change to the shelf.
+    const draft = await s.request('POST', '/api/deliveries', {
+      orderId,
+      deliveredAt: '2026-08-20',
+      lines: [{ orderLineId, qty: 12 }],
+    });
+    assert.equal(draft.status, 201);
+    assert.match(draft.body.delivery.deliveryNo, /^DEL-\d{4}-\d{5}$/);
+    assert.equal(draft.body.delivery.status, 'draft');
+    assert.equal(draft.body.delivery.lines[0].movementId, null);
+
+    const beforeDispatch = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(beforeDispatch.body.summary.onHand, 30);
+    assert.equal(beforeDispatch.body.movements.length, 1, 'still just the opening balance');
+
+    // Dispatching is the physical event.
+    const dispatched = await s.request('POST', `/api/deliveries/${draft.body.delivery.id}/dispatch`);
+    assert.equal(dispatched.status, 200);
+    assert.equal(dispatched.body.delivery.status, 'dispatched');
+    assert.equal(dispatched.body.order.status, 'partially_delivered');
+    assert.ok(dispatched.body.delivery.lines[0].movementId, 'the line records its movement');
+
+    const afterDispatch = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(afterDispatch.body.summary.onHand, 18);
+    assert.equal(afterDispatch.body.summary.allocated, 18, 'the remainder was reserved again');
+    assert.equal(afterDispatch.body.summary.available, 0);
+    assert.equal(afterDispatch.body.movements.length, 2);
+
+    // The rest goes out in one step.
+    const rest = await s.request('POST', '/api/deliveries?dispatch=true', {
+      orderId,
+      lines: [{ orderLineId, qty: 18 }],
+    });
+    assert.equal(rest.status, 201);
+    assert.equal(rest.body.order.status, 'delivered');
+    assert.equal(rest.body.allocation, null);
+
+    const final = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(final.body.summary.onHand, 0);
+
+    const list = await s.request('GET', `/api/deliveries?orderId=${orderId}`);
+    assert.equal(list.body.deliveries.length, 2);
+    assert.equal(list.body.deliveries[0].totalQty, 18, 'newest first');
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('delivery refusals arrive as the right status code', async () => {
+  const s = await startTestServer();
+  try {
+    // 12 on the shelf: 10 for the first order, 2 left over for the second.
+    const { customerId, variantId } = await seedCatalogue(s, 12);
+    const created = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 10 }],
+    });
+    const orderId = created.body.order.id;
+    const orderLineId = created.body.order.lines[0].id;
+
+    // 409: the order is still a draft, so nothing may be delivered against it.
+    const tooEarly = await s.request('POST', '/api/deliveries', {
+      orderId,
+      lines: [{ orderLineId, qty: 1 }],
+    });
+    assert.equal(tooEarly.status, 409);
+    assert.equal(tooEarly.body.error, 'order_not_deliverable');
+
+    await s.request('POST', `/api/orders/${orderId}/confirm`);
+
+    // 409: more than the order asked for.
+    const tooMany = await s.request('POST', '/api/deliveries?dispatch=true', {
+      orderId,
+      lines: [{ orderLineId, qty: 11 }],
+    });
+    assert.equal(tooMany.status, 409);
+    assert.equal(tooMany.body.error, 'delivery_exceeds_order');
+
+    // 400: a fractional quantity of garments.
+    const fractional = await s.request('POST', '/api/deliveries', {
+      orderId,
+      lines: [{ orderLineId, qty: 1.5 }],
+    });
+    assert.equal(fractional.status, 400);
+    assert.equal(fractional.body.field, 'lines[0].qty');
+
+    // 400: a line belonging to no order of ours.
+    const foreign = await s.request('POST', '/api/deliveries', {
+      orderId,
+      lines: [{ orderLineId: orderLineId + 999, qty: 1 }],
+    });
+    assert.equal(foreign.status, 400);
+
+    // 404: no such delivery.
+    assert.equal((await s.request('GET', '/api/deliveries/999')).status, 404);
+    assert.equal((await s.request('POST', '/api/deliveries/999/dispatch')).status, 404);
+
+    // 409: a dispatched delivery cannot be cancelled; the goods have gone.
+    const out = await s.request('POST', '/api/deliveries?dispatch=true', {
+      orderId,
+      lines: [{ orderLineId, qty: 10 }],
+    });
+    assert.equal(out.status, 201);
+    const cancel = await s.request('POST', `/api/deliveries/${out.body.delivery.id}/cancel`, {
+      reason: 'wrong colour',
+    });
+    assert.equal(cancel.status, 409);
+    assert.equal(cancel.body.error, 'dispatched_delivery_cannot_be_cancelled');
+
+    // 400: cancelling without saying why.
+    const second = await s.request('POST', '/api/orders', {
+      customerId,
+      lines: [{ variantId, qtyOrdered: 2 }],
+    });
+    const secondId = second.body.order.id;
+    await s.request('POST', `/api/orders/${secondId}/confirm`);
+    const draft = await s.request('POST', '/api/deliveries', {
+      orderId: secondId,
+      lines: [{ orderLineId: second.body.order.lines[0].id, qty: 2 }],
+    });
+    assert.equal(draft.status, 201);
+    const noReason = await s.request('POST', `/api/deliveries/${draft.body.delivery.id}/cancel`, {});
+    assert.equal(noReason.status, 400);
+    assert.equal(noReason.body.field, 'reason');
+
+    // A cancelled draft is allowed, and moves nothing.
+    const cancelled = await s.request('POST', `/api/deliveries/${draft.body.delivery.id}/cancel`, {
+      reason: 'van broke down',
+    });
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.delivery.status, 'cancelled');
+
+    const stockAfter = await s.request('GET', `/api/stock/${variantId}`);
+    assert.equal(stockAfter.body.summary.onHand, 2, 'only the one real delivery moved stock');
+  } finally {
+    await s.cleanup();
+  }
+});
