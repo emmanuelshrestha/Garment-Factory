@@ -45,7 +45,7 @@ export function stockRoutes(app: AppContext): Route[] {
             activeOnly: optionalBoolean(query.activeOnly, 'activeOnly') ?? false,
           }),
         );
-        sendJson(res, 200, { stock: rows });
+        sendJson(res, 200, { summaries: rows });
       },
     },
     {

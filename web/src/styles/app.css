@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-variant-numeric: tabular-nums;
+  }
+}

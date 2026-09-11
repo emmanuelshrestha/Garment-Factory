@@ -28,6 +28,7 @@ import {
   reactivateCustomer,
   updateCustomer,
 } from '../../src/services/customers.ts';
+import { getStockOnHand, recordOpeningBalance } from '../../src/services/stock.ts';
 import { BusinessRuleError, NotFoundError, ValidationError } from '../../src/domain/errors.ts';
 import { addDays, today } from '../../src/domain/dates.ts';
 import { createTestDb, type TestDb } from '../helpers/testDb.ts';
@@ -459,6 +460,64 @@ test('customer validation refuses nonsense rather than storing it', () => {
         ValidationError,
       );
       assert.throws(() => getCustomer(tx, 999), NotFoundError);
+    });
+  });
+});
+
+test('generated variants store minStockQty and can receive opening stock', () => {
+  withDb((t) => {
+    // Create a product, a colour, and a size
+    const productId = transaction(t.db, (tx) =>
+      createProduct(tx, {
+        code: 'JKT-M', name: 'Min Stock Jacket',
+        defaultPriceMinor: 100000, defaultCurrency: 'NPR',
+        userId: t.userId,
+      }),
+    );
+
+    const colourId = transaction(t.db, (tx) =>
+      createColour(tx, 'Navy'),
+    );
+
+    // Use the already-seeded size 'M' from migrations
+    const sizes = readOnly(t.db, (tx) => listSizes(tx));
+    const sizeM = sizes.find((s) => s.name === 'M');
+    assert.ok(sizeM, 'size M should be seeded by migration');
+    const sizeId = sizeM.id;
+
+    // Generate with minStockQty = 20
+    const result = transaction(t.db, (tx) =>
+      generateVariants(tx, {
+        productId,
+        colourIds: [colourId],
+        sizeIds: [sizeId],
+        minStockQty: 20,
+        userId: t.userId,
+      }),
+    );
+
+    assert.equal(result.created.length, 1, 'one variant created');
+
+    // Verify minStockQty is persisted
+    readOnly(t.db, (tx) => {
+      const variants = listVariants(tx, productId);
+      assert.equal(variants.length, 1);
+      assert.equal(variants[0].minStockQty, 20, 'minStockQty stored correctly');
+    });
+
+    // Record opening balance (simulates what the route handler does for openingStockQty)
+    transaction(t.db, (tx) =>
+      recordOpeningBalance(tx, {
+        variantId: result.created[0],
+        qty: 50,
+        userId: t.userId,
+      }),
+    );
+
+    // Verify stock is now 50
+    readOnly(t.db, (tx) => {
+      const onHand = getStockOnHand(tx, result.created[0]);
+      assert.equal(onHand, 50, 'opening stock creates actual on-hand inventory');
     });
   });
 });

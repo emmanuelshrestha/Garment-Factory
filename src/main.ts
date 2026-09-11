@@ -24,7 +24,11 @@ function main(): void {
   }
 
   const app = { db, currentUserId: resolveOwnerUserId(db) };
-  const staticDir = existsSync(config.webConsoleDir) ? config.webConsoleDir : undefined;
+  const staticDir = existsSync(config.webDistDir)
+    ? config.webDistDir
+    : existsSync(config.webConsoleDir)
+    ? config.webConsoleDir
+    : undefined;
   const server = createApiServer(app, { staticDir });
 
   server.listen(config.port, config.host, () => {
@@ -32,7 +36,8 @@ function main(): void {
     console.log(`garment server listening on ${shown}:${config.port}`);
     console.log(`database: ${config.databasePath}`);
     if (staticDir) {
-      console.log(`console:  http://localhost:${config.port}/`);
+      const mode = staticDir === config.webDistDir ? 'React UI (web/dist)' : 'console (console/index.html)';
+      console.log(`ui:       http://localhost:${config.port}/ [${mode}]`);
     }
     if (config.host === '0.0.0.0') {
       console.warn('WARNING: bound to all interfaces with no authentication. See OPEN-6 in DECISIONS.md.');

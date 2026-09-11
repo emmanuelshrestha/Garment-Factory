@@ -423,6 +423,120 @@ Tested: 15 domain tests, 18 service tests, 2 HTTP tests, and 23 mutations of
 
 ---
 
+## D026 — The owner picks which bills a payment settles — CONFIRMED
+
+Owner decision, 2026-08-24. Asked whether a receipt should be applied to the
+oldest unpaid bill automatically. Answer: "I pick the bills myself."
+
+So recording money and deciding what it pays are two separate instructions.
+`recordPayment` applies nothing on its own; `applyPayment(paymentId,
+allocations)` is an explicit second act, and the allocations it writes are
+append-only rows in `payment_allocations`. Nothing an invoice owes ever
+changes because the software guessed.
+
+`UNIQUE (payment_id, invoice_id)` enforces one row per payment per invoice. A
+payment that needs to give a bill more money later is a second payment, not
+an edited allocation — the same reasoning as the stock ledger: correct by
+adding, never by overwriting.
+
+The cost of this choice is that a receipt can sit unapplied and a bill can
+look unpaid while the money is already in the bank. That is what D027 makes
+visible rather than hides.
+
+---
+
+## D027 — Money with no bill yet is held as an advance, never netted off — CONFIRMED
+
+Owner decision, 2026-08-24. Asked what to do with a deposit taken before any
+invoice exists. Answer: "Accept it and hold it as an advance."
+
+`recordPayment` accepts a payment with no allocations. Unapplied cleared money
+is reported per currency as `advanceMinor` and is **never** subtracted from
+`outstandingMinor`. Netting the two would quietly make the D026 decision on
+the owner's behalf: a customer holding a 100,000 advance while a *different*
+100,000 bill stands open is not the same as a customer who is square, and the
+difference matters when a bill is disputed or a delivery is short.
+
+Only cleared money can be an advance. A cheque still in the drawer is
+reported as `pendingChequeMinor` — neither settlement nor advance, because it
+is not money yet.
+
+The domain refuses `settled_exceeds_invoiced`: if the settled figure ever
+exceeds the invoiced one, that is arithmetic going wrong, not a customer in
+credit, and it stops rather than reporting a negative receivable.
+
+---
+
+## D028 — A cheque already marked cleared can still be returned — CONFIRMED
+
+Owner decision, 2026-08-24. Asked whether a bounce can happen after the owner
+has marked the cheque cleared. Answer: "Yes, it can bounce after clearing."
+
+`cleared -> bounced` is therefore a legal transition, and the payment keeps
+`cleared_at` — the bank really did credit it on that day. A bounce needs its
+own date and a reason (D005 and D024 already require that of money leaving
+the books). Allocation rows are **never deleted**: they stop counting because
+the payment is no longer `cleared`, so the receivable is restored by
+arithmetic rather than by erasing what happened. The audit trail reads
+recorded → applied → cleared → bounced, and `historicAppliedMinor` keeps the
+all-time figure visible next to the live one.
+
+The schema had to change to allow this. The original CHECK was:
+
+```sql
+CHECK ((status = 'cleared') = (cleared_at IS NOT NULL))
+```
+
+which forced a bounce to null out `cleared_at`. Migration 003 replaces it with
+two weaker rules that say what was actually meant: a cleared payment must
+carry a clearing date, and only a payment that has at some point cleared may
+carry one at all. A test then found the same fault a second time — a
+mis-entered cash receipt, cleared on arrival, could not be cancelled at all,
+because cancelling would also have had to null the date. `cancelled` was added
+to the second CHECK for the same reason.
+
+**Engineering note, recorded because it will be needed again.** SQLite cannot
+drop a column CHECK, so the table is rebuilt; and with `PRAGMA foreign_keys =
+ON` you cannot `DROP TABLE payments` while `payment_allocations` references
+it. `PRAGMA defer_foreign_keys` does not help — it defers row violations, not
+the schema dependency — and `legacy_alter_table` does not either. The order
+that works: create both new tables, copy the rows, drop the child then the
+parent, then rename the parent, because the rename is what rewrites the
+child's `REFERENCES` clause. Migration 003 does exactly that. Applied
+migrations are immutable (sha256 guard in `src/db/migrate.ts`), so 003 could
+only be edited in place because no database had ever run it; after this, the
+same fix would need a migration 004.
+
+---
+
+## D029 — A payment settles bills in its own currency only — CONFIRMED
+
+Owner decision, 2026-08-24. Asked whether a rupee receipt could settle a
+dollar invoice at the day's rate. Answer: "No — same currency only."
+
+`allocation_currency_mismatch` refuses it in the domain, so no route can get
+round it. Cross-currency settlement invents an FX gain or loss and has nowhere
+honest to put it; until there is an approved place for that number, the safe
+answer is to refuse. Each payment still records its own `fx_rate_to_npr` at
+receipt (D011) so NPR reporting is possible without touching the settlement
+rule.
+
+The consequence is that a customer balance is per currency. `getCustomerStatement`
+returns one balance row per currency and deliberately offers no single "total
+owed" figure, because producing one would require the FX conversion this
+decision just refused.
+
+Those balances are computed by aggregate query over all invoices and payments,
+not by summing the invoice and payment lists the statement returns for
+display. The lists are capped; a balance that quietly stopped counting at the
+cap would be wrong in exactly the case where it matters most — the customer
+who has been trading longest.
+
+Tested: 28 domain tests, 29 service tests, and 35 mutations of
+`domain/payments.ts` and `services/payments.ts`, all caught.
+
+---
+
 ## Open decisions blocking Step 0
 
 None. All four are resolved.

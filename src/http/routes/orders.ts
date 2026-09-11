@@ -49,6 +49,8 @@ export function orderRoutes(app: AppContext): Route[] {
             // The service validates the status against ORDER_STATUSES.
             status: optionalString(query.status, 'status') as OrderStatus | undefined,
             openOnly: optionalBoolean(query.openOnly, 'openOnly') ?? false,
+            fromDate: optionalString(query.fromDate, 'fromDate'),
+            toDate: optionalString(query.toDate, 'toDate'),
             limit: optionalInt(query.limit, 'limit'),
           }),
         );

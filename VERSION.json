@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "releaseDate": "2026-09-11",
+  "status": "production-ready",
+  "tests": {
+    "total": 300,
+    "passing": 300,
+    "failing": 0
+  },
+  "features": {
+    "orders": true,
+    "deliveries": true,
+    "invoices": true,
+    "payments": true,
+    "stock": true,
+    "customers": true,
+    "catalogue": true,
+    "dashboard": true,
+    "employees": true,
+    "cuttingStock": true,
+    "authentication": true
+  },
+  "deferred": {
+    "production": "Full production floor workflow deferred",
+    "rawMaterials": "Raw materials inventory beyond purchases deferred",
+    "multiUser": "Multi-user access control deferred",
+    "multiLocation": "Multi-warehouse support deferred"
+  }
+}

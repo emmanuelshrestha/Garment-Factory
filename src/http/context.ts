@@ -1,14 +1,14 @@
 /**
  * What a request handler needs to do its job: a database, and who is acting.
  *
- * Authentication is not built yet — the factory has one user, the owner, and
- * the system runs on the factory LAN. `currentUserId` is resolved once at
- * startup so that every `created_by` column is still populated correctly and
- * real logins can be added later without touching a single route.
+ * Provides functions to resolve the acting user from request session cookies,
+ * falling back to the configured owner account when running without auth.
  */
 
+import type { IncomingMessage } from 'node:http';
 import type { Db } from '../db/sqlite.ts';
 import { readOnly } from '../db/sqlite.ts';
+import { getSessionUser, type UserView } from '../services/auth.ts';
 
 export type AppContext = {
   db: Db;
@@ -26,4 +26,41 @@ export function resolveOwnerUserId(db: Db): number {
     );
   }
   return Number(row.id);
+}
+
+/** Parse raw cookie header string into a key-value dictionary. */
+export function parseCookies(req: { headers: { cookie?: string } }): Record<string, string> {
+  const list: Record<string, string> = {};
+  const cookieHeader = req.headers.cookie;
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    if (parts.length >= 2) {
+      list[parts[0]!.trim()] = decodeURIComponent(parts.slice(1).join('=').trim());
+    }
+  });
+  return list;
+}
+
+/** Look up the currently authenticated user from the garment_session cookie. */
+export function getRequestSessionUser(app: AppContext, req: IncomingMessage): UserView | null {
+  const cookies = parseCookies(req);
+  const sessionId = cookies['garment_session'];
+  if (!sessionId) {
+    return null;
+  }
+  return readOnly(app.db, (tx) => getSessionUser(tx, sessionId));
+}
+
+/**
+ * Resolve the user ID for an operation:
+ * returns the authenticated user ID if a valid session exists,
+ * or falls back to app.currentUserId (e.g. during test runs).
+ */
+export function getRequestUserId(app: AppContext, req: IncomingMessage): number {
+  const user = getRequestSessionUser(app, req);
+  if (user) {
+    return user.id;
+  }
+  return app.currentUserId;
 }

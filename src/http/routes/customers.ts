@@ -58,7 +58,8 @@ export function customerRoutes(app: AppContext): Route[] {
             userId: app.currentUserId,
           }),
         );
-        sendJson(res, 201, { id });
+        const customer = readOnly(app.db, (tx) => getCustomer(tx, id));
+        sendJson(res, 201, { customer });
       },
     },
     {
@@ -71,6 +72,25 @@ export function customerRoutes(app: AppContext): Route[] {
           orders: listOrders(tx, { customerId }),
         }));
         sendJson(res, 200, payload);
+      },
+    },
+    {
+      method: 'PUT',
+      pattern: '/api/customers/:id',
+      handler: async ({ req, res, params }) => {
+        const customerId = requireInt(params.id, 'id');
+        const body = await readJsonBody(req);
+        transaction(app.db, (tx) =>
+          updateCustomer(tx, customerId, {
+            name: optionalString(body.name, 'name'),
+            phone: body.phone === undefined ? undefined : optionalString(body.phone, 'phone') ?? null,
+            address: body.address === undefined ? undefined : optionalString(body.address, 'address') ?? null,
+            defaultCurrency: optionalString(body.defaultCurrency, 'defaultCurrency') as Currency | undefined,
+            notes: body.notes === undefined ? undefined : optionalString(body.notes, 'notes') ?? null,
+          }),
+        );
+        const customer = readOnly(app.db, (tx) => getCustomer(tx, customerId));
+        sendJson(res, 200, { customer });
       },
     },
     {

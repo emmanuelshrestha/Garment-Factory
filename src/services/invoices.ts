@@ -193,7 +193,7 @@ export function getInvoice(tx: Tx, invoiceId: number): Invoice {
     .get(invoiceId) as InvoiceHeaderRow | undefined;
 
   if (header === undefined) {
-    throw new NotFoundError(`invoice ${invoiceId} does not exist`, 'invoice', invoiceId);
+    throw new NotFoundError('invoice', invoiceId);
   }
 
   const lineRows = tx.db
@@ -484,7 +484,7 @@ function resolveBillableLines(tx: Tx, input: CreateInvoiceInput): BillableLine[]
       .prepare(`SELECT id, delivery_no, status FROM deliveries WHERE id = ?`)
       .get(deliveryId) as { id: number; delivery_no: string; status: string } | undefined;
     if (delivery === undefined) {
-      throw new NotFoundError(`delivery ${deliveryId} does not exist`, 'delivery', deliveryId);
+      throw new NotFoundError('delivery', deliveryId);
     }
     if (delivery.status !== 'dispatched') {
       throw new BusinessRuleError(
@@ -539,7 +539,7 @@ function resolveBillableLines(tx: Tx, input: CreateInvoiceInput): BillableLine[]
   const found = new Set(rows.map((row) => Number(row.delivery_line_id)));
   for (const id of ids) {
     if (!found.has(id)) {
-      throw new NotFoundError(`delivered line ${id} does not exist`, 'delivery_line', id);
+      throw new NotFoundError('delivered line', id);
     }
   }
   for (const row of rows) {

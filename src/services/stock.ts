@@ -25,6 +25,7 @@ import {
 } from '../domain/stock.ts';
 import { getIntSetting } from './settings.ts';
 import { nextDocumentNumber } from './documentNumbers.ts';
+import { recordAudit } from './audit.ts';
 
 export const AMBER_PERCENT_SETTING = 'low_stock_amber_percent';
 
@@ -452,6 +453,14 @@ export function createStockAdjustment(tx: Tx, input: CreateAdjustmentInput): Sto
       .run(adjustmentId, line.variantId, line.qtyDelta, movementId);
 
     return { variantId: line.variantId, qtyDelta: line.qtyDelta, movementId };
+  });
+
+  recordAudit(tx, {
+    action: 'stock_adjustment_created',
+    entityType: 'stock_adjustment',
+    entityId: adjustmentId,
+    detail: { adjustmentNo, reasonCode, lineCount: lines.length },
+    userId: input.userId,
   });
 
   return { id: adjustmentId, adjustmentNo, reasonCode, note, adjustedAt, lines };

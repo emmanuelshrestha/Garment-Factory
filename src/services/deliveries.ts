@@ -33,6 +33,7 @@ import { assertPositiveQty } from '../domain/money.ts';
 import { nextDocumentNumber } from './documentNumbers.ts';
 import { allocateOrder, getOrder, type AllocationResult, type Order } from './orders.ts';
 import { getAllocatedQty, getStockOnHand, recordStockMovement } from './stock.ts';
+import { recordAudit } from './audit.ts';
 
 export const DELIVERY_STATUSES = ['draft', 'dispatched', 'cancelled'] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
@@ -130,7 +131,16 @@ export function createDelivery(tx: Tx, input: CreateDeliveryInput): Delivery {
     insertLine.run(deliveryId, plan.orderLineId, plan.variantId, plan.qty);
   }
 
-  return getDelivery(tx, deliveryId);
+  const delivery = getDelivery(tx, deliveryId);
+  recordAudit(tx, {
+    action: 'delivery_created',
+    entityType: 'delivery',
+    entityId: deliveryId,
+    detail: { to: 'draft', deliveryNo, orderNo: order.orderNo, totalQty: delivery.totalQty },
+    userId: input.userId,
+  });
+
+  return delivery;
 }
 
 /* ------------------------------------------------------------- dispatch */
@@ -198,8 +208,17 @@ export function dispatchDelivery(tx: Tx, deliveryId: number, userId: number): Di
   // anything left to reserve, and allocateOrder refuses a delivered one.
   const allocation = nextStatus === 'partially_delivered' ? allocateOrder(tx, order.id, userId) : null;
 
+  const resultDelivery = getDelivery(tx, deliveryId);
+  recordAudit(tx, {
+    action: 'delivery_dispatched',
+    entityType: 'delivery',
+    entityId: deliveryId,
+    detail: { from: 'draft', to: 'dispatched', deliveryNo: header.delivery_no, orderNo: order.orderNo, totalQty: resultDelivery.totalQty },
+    userId,
+  });
+
   return {
-    delivery: getDelivery(tx, deliveryId),
+    delivery: resultDelivery,
     order: getOrder(tx, order.id),
     allocation,
   };
@@ -253,6 +272,14 @@ export function cancelDelivery(tx: Tx, deliveryId: number, reason: string, userI
         WHERE id = ?`,
     )
     .run(stamped, stamped, deliveryId);
+
+  recordAudit(tx, {
+    action: 'delivery_cancelled',
+    entityType: 'delivery',
+    entityId: deliveryId,
+    detail: { from: header.status, to: 'cancelled', deliveryNo: header.delivery_no, reason: trimmed },
+    userId,
+  });
 
   return getDelivery(tx, deliveryId);
 }

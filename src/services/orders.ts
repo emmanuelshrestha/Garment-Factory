@@ -32,6 +32,7 @@ import { nextDocumentNumber } from './documentNumbers.ts';
 import { getVariant, resolveVariantPrice } from './catalogue.ts';
 import { getCustomer } from './customers.ts';
 import { getAvailableQty } from './stock.ts';
+import { recordAudit } from './audit.ts';
 
 export type OrderLine = {
   id: number;
@@ -140,6 +141,14 @@ export function createOrder(tx: Tx, input: CreateOrderInput): number {
   for (const line of input.lines) {
     addOrderLine(tx, orderId, line);
   }
+
+  recordAudit(tx, {
+    action: 'order_created',
+    entityType: 'order',
+    entityId: orderId,
+    detail: { to: 'draft', orderNo, currency },
+    userId: input.userId,
+  });
 
   return orderId;
 }
@@ -269,7 +278,17 @@ export function confirmOrder(tx: Tx, orderId: number, userId: number): Allocatio
   }
 
   tx.db.prepare("UPDATE orders SET status = 'confirmed' WHERE id = ?").run(orderId);
-  return allocateOrder(tx, orderId, userId);
+  const result = allocateOrder(tx, orderId, userId);
+
+  recordAudit(tx, {
+    action: 'order_confirmed',
+    entityType: 'order',
+    entityId: orderId,
+    detail: { from: header.status, to: 'confirmed', orderNo: header.order_no, totalShortageQty: result.totalShortageQty },
+    userId,
+  });
+
+  return result;
 }
 
 /**
@@ -357,7 +376,7 @@ export function releaseOrderAllocations(tx: Tx, orderId: number): number {
  * the accounting treatment of that is the owner's decision, not this
  * function's guess.
  */
-export function cancelOrder(tx: Tx, orderId: number, reason: string): void {
+export function cancelOrder(tx: Tx, orderId: number, reason: string, userId?: number | null): void {
   const header = requireHeader(tx, orderId);
   assertOrderTransition(header.status, 'cancelled');
   const note = String(reason ?? '').trim();
@@ -373,13 +392,34 @@ export function cancelOrder(tx: Tx, orderId: number, reason: string): void {
         WHERE id = ?`,
     )
     .run(`Cancelled: ${note}`, `Cancelled: ${note}`, orderId);
+
+  recordAudit(tx, {
+    action: 'order_cancelled',
+    entityType: 'order',
+    entityId: orderId,
+    detail: { from: header.status, to: 'cancelled', orderNo: header.order_no, reason: note },
+    userId: userId ?? null,
+  });
 }
 
 /** Mark a fully delivered order as closed: nothing further will happen on it. */
-export function closeOrder(tx: Tx, orderId: number): void {
+export function closeOrder(tx: Tx, orderId: number, userId?: number | null): void {
   const header = requireHeader(tx, orderId);
   assertOrderTransition(header.status, 'closed');
+
+  if (header.status === 'partially_delivered') {
+    releaseOrderAllocations(tx, orderId);
+  }
+
   tx.db.prepare("UPDATE orders SET status = 'closed' WHERE id = ?").run(orderId);
+
+  recordAudit(tx, {
+    action: 'order_closed',
+    entityType: 'order',
+    entityId: orderId,
+    detail: { from: header.status, to: 'closed', orderNo: header.order_no },
+    userId: userId ?? null,
+  });
 }
 
 /* -------------------------------------------------------------- querying */
@@ -442,7 +482,7 @@ export type OrderSummary = {
 
 export function listOrders(
   tx: Tx,
-  filter: { customerId?: number; status?: OrderStatus; openOnly?: boolean; limit?: number } = {},
+  filter: { customerId?: number; status?: OrderStatus; openOnly?: boolean; fromDate?: string; toDate?: string; limit?: number } = {},
 ): OrderSummary[] {
   const where: string[] = [];
   const params: (number | string)[] = [];
@@ -456,6 +496,14 @@ export function listOrders(
   }
   if (filter.openOnly) {
     where.push("o.status IN ('draft', 'confirmed', 'partially_delivered')");
+  }
+  if (filter.fromDate !== undefined) {
+    where.push('o.order_date >= ?');
+    params.push(assertDate(filter.fromDate, 'fromDate'));
+  }
+  if (filter.toDate !== undefined) {
+    where.push('o.order_date <= ?');
+    params.push(assertDate(filter.toDate, 'toDate'));
   }
   const limit = filter.limit ?? 500;
   if (!Number.isInteger(limit) || limit < 1) {

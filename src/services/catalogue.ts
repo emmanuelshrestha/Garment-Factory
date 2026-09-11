@@ -225,7 +225,6 @@ export function generateVariants(
   if (!Number.isInteger(minStockQty) || minStockQty < 0) {
     throw new ValidationError(`minStockQty must be zero or more, got ${minStockQty}`, 'minStockQty');
   }
-
   const colours = new Map(listColours(tx).map((c) => [c.id, c.name]));
   const sizes = new Map(listSizes(tx).map((s) => [s.id, s.name]));
   const now = nowTimestamp();
@@ -250,23 +249,36 @@ export function generateVariants(
         continue;
       }
       const sku = buildSku(product.code, colourName, sizeName);
-      created.push(
-        Number(
-          tx.db
-            .prepare(
-              `INSERT INTO product_variants (product_id, colour_id, size_id, sku, price_minor, min_stock_qty, created_at)
-               VALUES (?, ?, ?, ?, NULL, ?, ?)`,
-            )
-            .run(product.id, colourId, sizeId, sku, minStockQty, now).lastInsertRowid,
-        ),
+      const variantId = Number(
+        tx.db
+          .prepare(
+            `INSERT INTO product_variants (product_id, colour_id, size_id, sku, price_minor, min_stock_qty, created_at)
+             VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+          )
+          .run(product.id, colourId, sizeId, sku, minStockQty, now).lastInsertRowid,
       );
+      created.push(variantId);
     }
   }
 
   return { created, skipped };
 }
 
-export function listVariants(tx: Tx, productId: number, activeOnly = false): Variant[] {
+export function listVariants(tx: Tx, productId?: number, activeOnly = false): Variant[] {
+  if (productId !== undefined) {
+    const rows = tx.db
+      .prepare(
+        `SELECT v.id, v.product_id, v.sku, v.colour_id, c.name AS colour,
+                v.size_id, s.name AS size, v.price_minor, v.min_stock_qty, v.is_active
+           FROM product_variants v
+           JOIN colours c ON c.id = v.colour_id
+           JOIN sizes   s ON s.id = v.size_id
+          WHERE v.product_id = ? ${activeOnly ? 'AND v.is_active = 1' : ''}
+          ORDER BY c.name, s.sort_order`,
+      )
+      .all(productId) as VariantRow[];
+    return rows.map(toVariant);
+  }
   const rows = tx.db
     .prepare(
       `SELECT v.id, v.product_id, v.sku, v.colour_id, c.name AS colour,
@@ -274,10 +286,10 @@ export function listVariants(tx: Tx, productId: number, activeOnly = false): Var
          FROM product_variants v
          JOIN colours c ON c.id = v.colour_id
          JOIN sizes   s ON s.id = v.size_id
-        WHERE v.product_id = ? ${activeOnly ? 'AND v.is_active = 1' : ''}
-        ORDER BY c.name, s.sort_order`,
+        ${activeOnly ? 'WHERE v.is_active = 1' : ''}
+        ORDER BY v.product_id, c.name, s.sort_order`,
     )
-    .all(productId) as VariantRow[];
+    .all() as VariantRow[];
   return rows.map(toVariant);
 }
 

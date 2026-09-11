@@ -43,7 +43,7 @@ async function seedCatalogue(s: TestServer, onHand: number, priceMinor = 80000) 
     assert.equal(opening.status, 201);
   }
 
-  return { customerId: customer.body.id, productId: product.body.id, variantId };
+  return { customerId: customer.body.customer.id, productId: product.body.id, variantId };
 }
 
 test('health check answers', async () => {
@@ -576,6 +576,295 @@ test('invoice refusals arrive as the right status code', async () => {
     const list = await s.request('GET', '/api/invoices');
     assert.equal(list.body.invoices.length, 1);
     assert.equal(list.body.invoices[0].invoiceNo, 'INV-2026-00001', 'numbers stay gapless');
+  } finally {
+    await s.cleanup();
+  }
+});
+
+/** Order 30, dispatch all of it, bill it, issue it. Returns the ids that matter. */
+async function seedIssuedInvoice(s: TestServer) {
+  const { customerId, variantId } = await seedCatalogue(s, 30);
+  const created = await s.request('POST', '/api/orders', {
+    customerId,
+    lines: [{ variantId, qtyOrdered: 30 }],
+  });
+  const orderId = created.body.order.id;
+  await s.request('POST', `/api/orders/${orderId}/confirm`);
+  const out = await s.request('POST', '/api/deliveries?dispatch=true', {
+    orderId,
+    lines: [{ orderLineId: created.body.order.lines[0].id, qty: 30 }],
+  });
+  assert.equal(out.status, 201);
+  const invoice = await s.request('POST', '/api/invoices?issue=true', {
+    deliveryId: out.body.delivery.id,
+    invoiceDate: '2026-08-24',
+  });
+  assert.equal(invoice.status, 201);
+  assert.equal(invoice.body.invoice.totalMinor, 2_400_000, '30 pieces at 800.00');
+  return { customerId, variantId, invoiceId: invoice.body.invoice.id };
+}
+
+test('a cheque changes no balance until it clears, and a bounce puts the money back', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, invoiceId } = await seedIssuedInvoice(s);
+
+    const owed = await s.request('GET', `/api/receivables?customerId=${customerId}`);
+    assert.equal(owed.status, 200);
+    assert.equal(owed.body.receivables.length, 1);
+    assert.equal(owed.body.receivables[0].outstandingMinor, 2_400_000);
+
+    // A post-dated cheque, applied to the bill in the same call.
+    const cheque = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 2_400_000,
+      method: 'cheque',
+      receivedAt: '2026-08-24',
+      chequeNo: 'NIC-773401',
+      chequeDate: '2026-08-30',
+      allocations: [{ invoiceId, amountMinor: 2_400_000 }],
+    });
+    assert.equal(cheque.status, 201);
+    assert.match(cheque.body.payment.paymentNo, /^PAY-\d{4}-\d{5}$/);
+    assert.equal(cheque.body.payment.status, 'pending');
+    assert.equal(cheque.body.payment.allocations.length, 1);
+    const paymentId = cheque.body.payment.id;
+
+    // And it has settled nothing. This is the rule the whole slice exists for.
+    const stillOwed = await s.request('GET', `/api/receivables?customerId=${customerId}`);
+    assert.equal(stillOwed.body.receivables[0].settledMinor, 0);
+    assert.equal(stillOwed.body.receivables[0].outstandingMinor, 2_400_000);
+
+    const drawer = await s.request('GET', '/api/cheques/pending?asOf=2026-08-24');
+    assert.equal(drawer.status, 200);
+    assert.equal(drawer.body.cheques.length, 1);
+    assert.equal(drawer.body.cheques[0].postDated, true, 'dated the 30th, so it cannot be banked yet');
+
+    const cleared = await s.request('POST', `/api/payments/${paymentId}/clear`, {
+      clearedOn: '2026-08-31',
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.payment.status, 'cleared');
+    assert.equal(cleared.body.payment.clearedAt, '2026-08-31');
+
+    const settled = await s.request('GET', `/api/customers/${customerId}/statement?asOf=2026-08-31`);
+    assert.equal(settled.status, 200);
+    assert.equal(settled.body.statement.balances.length, 1, 'one currency, one balance');
+    assert.equal(settled.body.statement.balances[0].currency, 'NPR');
+    assert.equal(settled.body.statement.balances[0].settledMinor, 2_400_000);
+    assert.equal(settled.body.statement.balances[0].outstandingMinor, 0);
+    assert.equal(settled.body.statement.balances[0].pendingChequeMinor, 0);
+    assert.deepEqual(
+      (await s.request('GET', `/api/receivables?customerId=${customerId}&onlyOutstanding=true`)).body
+        .receivables,
+      [],
+    );
+    assert.deepEqual((await s.request('GET', '/api/cheques/pending')).body.cheques, []);
+
+    // The bank returns it a week later (D028). Nothing is deleted.
+    const bounced = await s.request('POST', `/api/payments/${paymentId}/bounce`, {
+      reason: 'insufficient funds',
+      bouncedOn: '2026-09-05',
+    });
+    assert.equal(bounced.status, 200);
+    assert.equal(bounced.body.payment.status, 'bounced');
+    assert.equal(bounced.body.payment.clearedAt, '2026-08-31', 'the day the bank credited it stands');
+    assert.equal(bounced.body.payment.bounceReason, 'insufficient funds');
+    assert.equal(bounced.body.payment.allocations.length, 1);
+    assert.equal(bounced.body.payment.historicAppliedMinor, 2_400_000);
+
+    const backOwed = await s.request('GET', `/api/customers/${customerId}/statement?asOf=2026-09-05`);
+    assert.equal(backOwed.body.statement.balances[0].outstandingMinor, 2_400_000);
+    assert.equal(backOwed.body.statement.balances[0].settledMinor, 0);
+    assert.equal(backOwed.body.statement.balances[0].pendingChequeMinor, 0, 'a bounce is not pending');
+
+    // Cash instead, with no bill named: held as an advance (D027), not netted off.
+    const cash = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 2_400_000,
+      method: 'cash',
+      receivedAt: '2026-09-06',
+    });
+    assert.equal(cash.status, 201);
+    assert.equal(cash.body.payment.status, 'cleared', 'cash is money on arrival');
+    assert.equal(cash.body.payment.unappliedMinor, 2_400_000);
+
+    const withAdvance = await s.request('GET', `/api/customers/${customerId}/statement?asOf=2026-09-06`);
+    assert.equal(withAdvance.body.statement.balances[0].advanceMinor, 2_400_000);
+    assert.equal(
+      withAdvance.body.statement.balances[0].outstandingMinor,
+      2_400_000,
+      'an advance is reported, never subtracted',
+    );
+
+    const applied = await s.request('POST', `/api/payments/${cash.body.payment.id}/apply`, {
+      allocations: [{ invoiceId, amountMinor: 2_400_000 }],
+    });
+    assert.equal(applied.status, 200);
+    assert.equal(applied.body.payment.unappliedMinor, 0);
+
+    const square = await s.request('GET', `/api/customers/${customerId}/statement?asOf=2026-09-06`);
+    assert.equal(square.body.statement.balances[0].outstandingMinor, 0);
+    assert.equal(square.body.statement.balances[0].advanceMinor, 0);
+    assert.equal(square.body.statement.payments.length, 2, 'both receipts are on the record');
+    assert.deepEqual(
+      (await s.request(`GET`, `/api/payments?customerId=${customerId}`)).body.payments.map(
+        (p: any) => p.status,
+      ),
+      ['cleared', 'bounced'],
+      'newest first, and the bounced receipt was not removed',
+    );
+  } finally {
+    await s.cleanup();
+  }
+});
+
+test('payment refusals arrive as the right status code', async () => {
+  const s = await startTestServer();
+  try {
+    const { customerId, invoiceId } = await seedIssuedInvoice(s);
+
+    // 400: a cheque with no cheque number.
+    const bareCheque = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 1000,
+      method: 'cheque',
+    });
+    assert.equal(bareCheque.status, 400);
+    assert.equal(bareCheque.body.error, 'validation_error');
+
+    // 400: an amount that is not money.
+    const fractional = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 10.5,
+      method: 'cash',
+    });
+    assert.equal(fractional.status, 400);
+    assert.equal(fractional.body.field, 'amountMinor');
+
+    // 400: nothing at all.
+    const nothing = await s.request('POST', '/api/payments', { customerId, method: 'cash' });
+    assert.equal(nothing.status, 400);
+    assert.equal(nothing.body.field, 'amountMinor');
+
+    // 404: no such customer, no such payment.
+    assert.equal(
+      (await s.request('POST', '/api/payments', { customerId: 9999, amountMinor: 100, method: 'cash' }))
+        .status,
+      404,
+    );
+    assert.equal((await s.request('GET', '/api/payments/9999')).status, 404);
+    assert.equal((await s.request('GET', '/api/customers/9999/statement')).status, 404);
+
+    // 409: more than the bill owes, by one paisa.
+    const overpay = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 2_400_001,
+      method: 'cash',
+      allocations: [{ invoiceId, amountMinor: 2_400_001 }],
+    });
+    assert.equal(overpay.status, 409);
+    assert.equal(overpay.body.error, 'allocation_exceeds_invoice');
+
+    // 409: more than the payment holds.
+    const overdraw = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 1000,
+      method: 'cash',
+      allocations: [{ invoiceId, amountMinor: 2000 }],
+    });
+    assert.equal(overdraw.status, 409);
+    assert.equal(overdraw.body.error, 'allocation_exceeds_payment');
+
+    // 409: rupees cannot settle a dollar bill (D029).
+    const usd = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 100_000,
+      method: 'cash',
+      currency: 'USD',
+      fxRateToNpr: 134_000_000,
+      allocations: [{ invoiceId, amountMinor: 100_000 }],
+    });
+    assert.equal(usd.status, 409);
+    assert.equal(usd.body.error, 'payment_currency_mismatch');
+
+    // Nothing above was written: the refusals rolled back with their payment.
+    assert.deepEqual((await s.request('GET', '/api/payments')).body.payments, []);
+
+    const cash = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 1_000_000,
+      method: 'cash',
+      receivedAt: '2026-08-24',
+    });
+    assert.equal(cash.status, 201);
+    const cashId = cash.body.payment.id;
+
+    // 409: cash never passes through a bank clearing.
+    const clearCash = await s.request('POST', `/api/payments/${cashId}/clear`, {});
+    assert.equal(clearCash.status, 409);
+    assert.equal(clearCash.body.error, 'payment_needs_no_clearing');
+
+    const bounceCash = await s.request('POST', `/api/payments/${cashId}/bounce`, { reason: 'no' });
+    assert.equal(bounceCash.status, 409);
+    assert.equal(bounceCash.body.error, 'only_a_cheque_can_bounce');
+
+    // 400: money coming back off the books unexplained.
+    const silent = await s.request('POST', `/api/payments/${cashId}/cancel`, {});
+    assert.equal(silent.status, 400);
+    assert.equal(silent.body.field, 'reason');
+
+    // 400: applying nothing, and applying twice to one bill in one call.
+    assert.equal((await s.request('POST', `/api/payments/${cashId}/apply`, { allocations: [] })).status, 400);
+    const twiceInOne = await s.request('POST', `/api/payments/${cashId}/apply`, {
+      allocations: [
+        { invoiceId, amountMinor: 100 },
+        { invoiceId, amountMinor: 100 },
+      ],
+    });
+    assert.equal(twiceInOne.status, 400);
+    assert.equal(twiceInOne.body.field, 'allocations[1].invoiceId');
+
+    // 409: a cancelled receipt is not money and cannot be applied.
+    const cancelled = await s.request('POST', `/api/payments/${cashId}/cancel`, {
+      reason: 'entered against the wrong customer',
+      cancelledOn: '2026-08-25',
+    });
+    assert.equal(cancelled.status, 200);
+    assert.equal(cancelled.body.payment.status, 'cancelled');
+
+    const late = await s.request('POST', `/api/payments/${cashId}/apply`, {
+      allocations: [{ invoiceId, amountMinor: 100 }],
+    });
+    assert.equal(late.status, 409);
+    assert.equal(late.body.error, 'payment_is_cancelled');
+
+    // 409: a cheque cannot clear before it was written.
+    const cheque = await s.request('POST', '/api/payments', {
+      customerId,
+      amountMinor: 500_000,
+      method: 'cheque',
+      receivedAt: '2026-08-24',
+      chequeNo: 'NIC-9',
+      chequeDate: '2026-09-10',
+    });
+    assert.equal(cheque.status, 201);
+    const early = await s.request('POST', `/api/payments/${cheque.body.payment.id}/clear`, {
+      clearedOn: '2026-09-01',
+    });
+    assert.equal(early.status, 409);
+    assert.equal(early.body.error, 'cleared_before_cheque_date');
+
+    // The cancelled receipt still owes nothing, and the bill is untouched.
+    const statement = await s.request('GET', `/api/customers/${customerId}/statement?asOf=2026-08-24`);
+    assert.equal(statement.body.statement.balances[0].outstandingMinor, 2_400_000);
+    assert.equal(statement.body.statement.balances[0].advanceMinor, 0, 'a cancelled receipt is not money');
+    assert.equal(statement.body.statement.balances[0].pendingChequeMinor, 500_000);
+    assert.deepEqual(
+      (await s.request('GET', '/api/payments')).body.payments.map((p: any) => p.paymentNo),
+      ['PAY-2026-00002', 'PAY-2026-00001'],
+      'numbers stay gapless despite every refusal above',
+    );
   } finally {
     await s.cleanup();
   }

@@ -1,0 +1,33 @@
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+
+  nav, header, button, .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .print-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border-bottom: 1px solid #ddd !important;
+    padding: 6px 8px !important;
+  }
+}

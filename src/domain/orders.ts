@@ -49,7 +49,7 @@ export function assertOrderStatus(value: unknown, field = 'status'): OrderStatus
 const ALLOWED_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   draft: ['confirmed', 'cancelled'],
   confirmed: ['partially_delivered', 'delivered', 'cancelled'],
-  partially_delivered: ['delivered', 'partially_delivered'],
+  partially_delivered: ['delivered', 'partially_delivered', 'closed'],
   delivered: ['closed'],
   closed: [],
   cancelled: [],

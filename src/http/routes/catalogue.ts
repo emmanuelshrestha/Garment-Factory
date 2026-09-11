@@ -24,6 +24,7 @@ import {
   setVariantPrice,
   updateProduct,
 } from '../../services/catalogue.ts';
+import { recordOpeningBalance } from '../../services/stock.ts';
 import type { AppContext } from '../context.ts';
 import type { Route } from '../router.ts';
 import {
@@ -61,6 +62,17 @@ export function catalogueRoutes(app: AppContext): Route[] {
       handler: ({ res, query }) => {
         const sizes = readOnly(app.db, (tx) => listSizes(tx, optionalBoolean(query.activeOnly, 'activeOnly') ?? false));
         sendJson(res, 200, { sizes });
+      },
+    },
+    {
+      method: 'POST',
+      pattern: '/api/sizes',
+      handler: async ({ req, res }) => {
+        const body = await readJsonBody(req);
+        const id = transaction(app.db, (tx) =>
+          createSize(tx, requireString(body.name, 'name'), requireInt(body.sortOrder, 'sortOrder')),
+        );
+        sendJson(res, 201, { id });
       },
     },
     {
@@ -144,16 +156,42 @@ export function catalogueRoutes(app: AppContext): Route[] {
       handler: async ({ req, res, params }) => {
         const productId = requireInt(params.id, 'id');
         const body = await readJsonBody(req);
-        const result = transaction(app.db, (tx) =>
-          generateVariants(tx, {
+        const openingStockQty = optionalInt(body.openingStockQty, 'openingStockQty') ?? 0;
+        if (openingStockQty < 0) {
+          throw new ValidationError('openingStockQty must be zero or more', 'openingStockQty');
+        }
+        const result = transaction(app.db, (tx) => {
+          const generated = generateVariants(tx, {
             productId,
             colourIds: intArray(body.colourIds, 'colourIds'),
             sizeIds: intArray(body.sizeIds, 'sizeIds'),
             minStockQty: optionalInt(body.minStockQty, 'minStockQty'),
             userId: app.currentUserId,
-          }),
-        );
+          });
+          // Automatically create opening balance for each newly created variant
+          if (openingStockQty > 0) {
+            for (const variantId of generated.created) {
+              recordOpeningBalance(tx, {
+                variantId,
+                qty: openingStockQty,
+                userId: app.currentUserId,
+              });
+            }
+          }
+          return generated;
+        });
         sendJson(res, 201, result);
+      },
+    },
+    {
+      // GET /api/variants?productId=N — list all variants, optionally filtered by product
+      method: 'GET',
+      pattern: '/api/variants',
+      handler: ({ res, query }) => {
+        const productId = optionalInt(query.productId, 'productId');
+        const activeOnly = optionalBoolean(query.activeOnly, 'activeOnly') ?? false;
+        const variants = readOnly(app.db, (tx) => listVariants(tx, productId, activeOnly));
+        sendJson(res, 200, { variants });
       },
     },
     {

@@ -106,6 +106,21 @@
       .pill.delivered, .pill.dispatched { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
       .pill.issued { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
       .pill.void { background: var(--red-bg); color: var(--red); border-color: #f3c9c5; text-decoration: line-through; }
+      .pill.cleared { background: var(--green-bg); color: var(--green); border-color: #c6e3cd; }
+      .pill.pending { background: var(--amber-bg); color: var(--amber); border-color: #eeddb4; }
+      .pill.bounced { background: var(--red-bg); color: var(--red); border-color: #f3c9c5; }
+      .figures { display: flex; gap: 10px; flex-wrap: wrap; }
+      .figure {
+        flex: 1 1 150px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--ground);
+      }
+      .figure b { display: block; font-size: 18px; font-weight: 600; margin-top: 2px; }
+      .figure span { font-size: 12px; color: var(--ink-soft); }
+      .figure.owed b { color: var(--red); }
+      .figure.held b { color: var(--accent); }
       button.primary {
         font: inherit;
         font-weight: 600;
@@ -158,6 +173,7 @@
         <button data-tab="stock" aria-current="true">Stock</button>
         <button data-tab="orders">Orders</button>
         <button data-tab="billing">Billing</button>
+        <button data-tab="money">Money in</button>
         <button data-tab="customers">Customers</button>
       </nav>
     </header>
@@ -253,6 +269,82 @@
         </section>
       </div>
 
+      <!-- -------------------------------------------------------------- money -->
+      <div id="tab-money" class="hidden">
+        <section class="panel">
+          <h2>Take a payment</h2>
+          <p class="note">
+            Recording money and deciding which bills it settles are two separate steps. Money with no
+            bill named is held as an advance until you apply it.
+          </p>
+          <div class="row">
+            <div>
+              <label for="pay-customer">Customer</label>
+              <select id="pay-customer"></select>
+            </div>
+            <div>
+              <label for="pay-method">Method</label>
+              <select id="pay-method">
+                <option value="cash">Cash</option>
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="cheque">Cheque</option>
+              </select>
+            </div>
+            <div>
+              <label for="pay-received">Money arrived</label>
+              <input type="date" id="pay-received" />
+            </div>
+            <div style="flex: 0 1 150px">
+              <label for="pay-amount">Amount</label>
+              <input type="number" id="pay-amount" min="0.01" step="0.01" placeholder="24000.00" />
+            </div>
+          </div>
+          <div class="row hidden" id="pay-cheque-fields">
+            <div>
+              <label for="pay-cheque-no">Cheque number</label>
+              <input id="pay-cheque-no" placeholder="NIC-773401" />
+            </div>
+            <div>
+              <label for="pay-cheque-date">Date on the cheque</label>
+              <input type="date" id="pay-cheque-date" />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="pay-invoice">Settle a bill now (optional)</label>
+              <select id="pay-invoice"></select>
+            </div>
+            <div>
+              <label for="pay-note">Note</label>
+              <input id="pay-note" placeholder="collected by the driver" />
+            </div>
+            <button class="primary" id="pay-save">Record payment</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Cheques waiting on the bank</h2>
+          <p class="note">
+            A cheque in the drawer is not money. None of these reduce what a customer owes until you
+            mark them cleared.
+          </p>
+          <div id="cheque-list"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Customer account</h2>
+          <div class="row">
+            <div>
+              <label for="statement-customer">Customer</label>
+              <select id="statement-customer"></select>
+            </div>
+            <button class="plain" id="statement-refresh">Refresh</button>
+          </div>
+          <div id="payment-detail"></div>
+          <div id="statement"></div>
+        </section>
+      </div>
+
       <!-- -------------------------------------------------------- customers -->
       <div id="tab-customers" class="hidden">
         <section class="panel">
@@ -335,15 +427,20 @@
       document.querySelectorAll('nav button').forEach((button) => {
         button.addEventListener('click', () => {
           document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-current', String(b === button)));
-          for (const name of ['stock', 'orders', 'billing', 'customers']) {
+          for (const name of ['stock', 'orders', 'billing', 'money', 'customers']) {
             document.getElementById(`tab-${name}`).classList.toggle('hidden', name !== button.dataset.tab);
           }
           clearAlert();
-          // Billing is the one tab whose contents go stale the moment a
-          // delivery is dispatched somewhere else on the screen.
+          // Billing and money both go stale the moment something is dispatched
+          // or billed elsewhere on the screen, so they reload on the way in.
           if (button.dataset.tab === 'billing') {
             run(async () => {
               await Promise.all([loadBillable(), loadInvoices()]);
+            });
+          }
+          if (button.dataset.tab === 'money') {
+            run(async () => {
+              await Promise.all([loadPayableInvoices(), loadPendingCheques(), loadStatement()]);
             });
           }
         });
@@ -405,10 +502,19 @@
         const { customers } = await api('GET', '/api/customers');
         state.customers = customers;
 
-        document.getElementById('order-customer').innerHTML = customers
-          .filter((c) => c.isActive)
+        const active = customers.filter((c) => c.isActive);
+        const options = active
           .map((c) => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.code)})</option>`)
           .join('');
+        document.getElementById('order-customer').innerHTML = options;
+        // Keep whatever the owner had chosen on the money tab; rebuilding the
+        // list must not silently move them to another customer's account.
+        for (const id of ['pay-customer', 'statement-customer']) {
+          const select = document.getElementById(id);
+          const chosen = select.value;
+          select.innerHTML = options;
+          if (chosen && active.some((c) => String(c.id) === chosen)) select.value = chosen;
+        }
 
         const target = document.getElementById('customer-list');
         target.innerHTML = customers.length === 0
@@ -868,6 +974,300 @@
         });
       }
 
+      /* ------------------------------------------------------------ money in */
+
+      /**
+       * Turn what the owner typed into integer minor units without going
+       * through a float: 24000.1 × 100 is 2400010.0000000005, and money does
+       * not survive that. Everything past this point is paisa.
+       */
+      function toMinor(text) {
+        const trimmed = String(text ?? '').trim();
+        if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) {
+          throw new Error('Type the amount in full, for example 24000 or 24000.50.');
+        }
+        const [whole, fraction = ''] = trimmed.split('.');
+        return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+      }
+
+      function syncChequeFields() {
+        const isCheque = document.getElementById('pay-method').value === 'cheque';
+        document.getElementById('pay-cheque-fields').classList.toggle('hidden', !isCheque);
+      }
+
+      /** The chosen customer's open bills, so a bill is picked rather than typed. */
+      async function loadPayableInvoices() {
+        const customerId = document.getElementById('pay-customer').value;
+        const select = document.getElementById('pay-invoice');
+        const hold = '<option value="">— hold it as an advance —</option>';
+        if (!customerId) {
+          select.innerHTML = hold;
+          return;
+        }
+        const { receivables } = await api(
+          'GET',
+          `/api/receivables?customerId=${encodeURIComponent(customerId)}&onlyOutstanding=true`,
+        );
+        select.innerHTML = [hold].concat(receivables.map((r) =>
+          `<option value="${r.invoiceId}">${escapeHtml(r.invoiceNo)} — ${money(r.outstandingMinor, r.currency)} outstanding</option>`
+        )).join('');
+      }
+
+      document.getElementById('pay-save').addEventListener('click', () => run(async () => {
+        const customerId = document.getElementById('pay-customer').value;
+        if (!customerId) throw new Error('Choose a customer first.');
+        const amountMinor = toMinor(document.getElementById('pay-amount').value);
+        const method = document.getElementById('pay-method').value;
+        const invoiceId = document.getElementById('pay-invoice').value;
+
+        const body = {
+          customerId: Number(customerId),
+          amountMinor,
+          method,
+          note: document.getElementById('pay-note').value.trim() || null,
+        };
+        const received = document.getElementById('pay-received').value;
+        if (received) body.receivedAt = received;
+        if (method === 'cheque') {
+          body.chequeNo = document.getElementById('pay-cheque-no').value.trim();
+          body.chequeDate = document.getElementById('pay-cheque-date').value || null;
+        }
+        // One bill at a time from this screen. Splitting one receipt across
+        // several bills is the Apply step on the receipt itself.
+        if (invoiceId) body.allocations = [{ invoiceId: Number(invoiceId), amountMinor }];
+
+        const { payment } = await api('POST', '/api/payments', body);
+        document.getElementById('pay-amount').value = '';
+        document.getElementById('pay-note').value = '';
+        document.getElementById('pay-cheque-no').value = '';
+        document.getElementById('pay-cheque-date').value = '';
+        document.getElementById('statement-customer').value = String(payment.customerId);
+        await Promise.all([loadPayableInvoices(), loadPendingCheques(), loadStatement()]);
+        await renderPayment(payment);
+        show('ok', payment.status === 'pending'
+          ? `${payment.paymentNo} recorded for ${money(payment.amountMinor, payment.currency)}. It changes no balance until you mark it cleared.`
+          : `${payment.paymentNo} recorded for ${money(payment.amountMinor, payment.currency)}.`);
+      }));
+
+      async function loadPendingCheques() {
+        const target = document.getElementById('cheque-list');
+        if (!target) return;
+        const { cheques } = await api('GET', '/api/cheques/pending');
+        if (cheques.length === 0) {
+          target.innerHTML = '<p class="note">No cheques waiting on the bank.</p>';
+          return;
+        }
+        target.innerHTML = `<table>
+          <tr><th>Receipt</th><th>Customer</th><th>Cheque</th><th>Dated</th><th class="num">Amount</th><th class="num">Earmarked</th><th></th></tr>
+          ${cheques.map((c) => `<tr>
+            <td class="sku">${escapeHtml(c.paymentNo)}</td>
+            <td>${escapeHtml(c.customerName)}</td>
+            <td>${escapeHtml(c.chequeNo ?? '—')}</td>
+            <td>${escapeHtml(c.chequeDate ?? '—')} ${c.postDated ? '<span class="pill pending">post-dated</span>' : ''}</td>
+            <td class="num">${money(c.amountMinor, c.currency)}</td>
+            <td class="num">${money(c.appliedMinor)}</td>
+            <td class="num">
+              <button class="primary" data-clear="${c.id}">Cleared</button>
+              <button class="plain" data-bounce="${c.id}">Bounced</button>
+              <button class="plain" data-open-payment="${c.id}">Open</button>
+            </td>
+          </tr>`).join('')}
+        </table>`;
+        wirePaymentButtons(target);
+      }
+
+      /**
+       * Clearing, bouncing, cancelling and opening a receipt, wherever the
+       * button happens to be. Every one of them asks the server; none of them
+       * works out a balance here.
+       */
+      function wirePaymentButtons(root) {
+        root.querySelectorAll('[data-clear]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const clearedOn = window.prompt('Which day did the bank credit it? (YYYY-MM-DD, blank for today)', '');
+            if (clearedOn === null) return;
+            const { payment } = await api('POST', `/api/payments/${button.dataset.clear}/clear`,
+              clearedOn.trim() ? { clearedOn: clearedOn.trim() } : {});
+            await refreshMoney(payment);
+            show('ok', `${payment.paymentNo} cleared. It now settles the bills it is applied to.`);
+          }));
+        });
+        root.querySelectorAll('[data-bounce]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const reason = window.prompt('Why did the bank return it? The reason is kept, and nothing is deleted.');
+            if (reason === null) return;
+            const { payment } = await api('POST', `/api/payments/${button.dataset.bounce}/bounce`, { reason });
+            await refreshMoney(payment);
+            show('warn', `${payment.paymentNo} marked bounced. What it had settled is owed again.`);
+          }));
+        });
+        root.querySelectorAll('[data-cancel-payment]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const reason = window.prompt('Why is this receipt being cancelled? It is kept on the record, not deleted.');
+            if (reason === null) return;
+            const { payment } = await api('POST', `/api/payments/${button.dataset.cancelPayment}/cancel`, { reason });
+            await refreshMoney(payment);
+            show('warn', `${payment.paymentNo} cancelled.`);
+          }));
+        });
+        root.querySelectorAll('[data-open-payment]').forEach((button) => {
+          button.addEventListener('click', () => run(async () => {
+            const { payment } = await api('GET', `/api/payments/${button.dataset.openPayment}`);
+            document.getElementById('statement-customer').value = String(payment.customerId);
+            await renderPayment(payment);
+            document.getElementById('payment-detail').scrollIntoView({ block: 'nearest' });
+          }));
+        });
+      }
+
+      async function refreshMoney(payment) {
+        document.getElementById('statement-customer').value = String(payment.customerId);
+        await Promise.all([loadPendingCheques(), loadStatement(), loadPayableInvoices()]);
+        await renderPayment(payment);
+      }
+
+      async function renderPayment(payment) {
+        const target = document.getElementById('payment-detail');
+        if (!target) return;
+
+        const banner = {
+          pending: '<div class="banner warn">Waiting on the bank. This receipt changes no balance yet.</div>',
+          cleared: '<div class="banner ok">Cleared. It settles the bills listed below.</div>',
+          bounced: `<div class="banner error">Returned by the bank on ${escapeHtml(payment.bouncedAt ?? '')} — ${escapeHtml(payment.bounceReason ?? '')}. What it settled is owed again; the record below is kept.</div>`,
+          cancelled: `<div class="banner error">Cancelled on ${escapeHtml(payment.cancelledAt ?? '')} — ${escapeHtml(payment.cancelReason ?? '')}.</div>`,
+        }[payment.status];
+
+        const remainingMinor = payment.amountMinor - payment.appliedMinor;
+        const settles = payment.status === 'cleared';
+        const canApply = remainingMinor > 0 && payment.status !== 'bounced' && payment.status !== 'cancelled';
+        const receivables = canApply
+          ? (await api('GET', `/api/receivables?customerId=${payment.customerId}&onlyOutstanding=true`)).receivables
+          : [];
+
+        target.innerHTML = `${banner}
+          <h3>${escapeHtml(payment.paymentNo)} · ${escapeHtml(payment.customerName)}
+            <span class="pill ${payment.status}">${escapeHtml(payment.status)}</span></h3>
+          <p class="note">
+            ${escapeHtml(payment.method.replace(/_/g, ' '))} · received ${escapeHtml(payment.receivedAt)}
+            ${payment.chequeNo ? ` · cheque ${escapeHtml(payment.chequeNo)} dated ${escapeHtml(payment.chequeDate ?? '')}` : ''}
+            ${payment.clearedAt ? ` · cleared ${escapeHtml(payment.clearedAt)}` : ''}
+            ${payment.note ? ` · ${escapeHtml(payment.note)}` : ''}
+          </p>
+          <div class="figures">
+            <div class="figure"><span>Received</span><b>${money(payment.amountMinor, payment.currency)}</b></div>
+            <div class="figure"><span>Applied to bills</span><b>${money(payment.appliedMinor)}</b></div>
+            <div class="figure held"><span>${settles ? 'Advance still held' : 'Not yet earmarked'}</span><b>${money(remainingMinor)}</b></div>
+          </div>
+          ${payment.allocations.length === 0
+            ? '<p class="note" style="margin-top: 12px">Not applied to any bill yet.</p>'
+            : `<table style="margin-top: 14px">
+                <tr><th>Bill</th><th>Dated</th><th>Status</th><th class="num">Bill total</th><th class="num">Applied</th></tr>
+                ${payment.allocations.map((a) => `<tr>
+                  <td class="sku">${escapeHtml(a.invoiceNo)}</td>
+                  <td>${escapeHtml(a.invoiceDate)}</td>
+                  <td><span class="pill ${a.invoiceStatus}">${escapeHtml(a.invoiceStatus)}</span></td>
+                  <td class="num">${money(a.invoiceTotalMinor)}</td>
+                  <td class="num">${money(a.amountMinor)}</td>
+                </tr>`).join('')}
+              </table>`}
+          ${payment.historicAppliedMinor !== payment.appliedMinor
+            ? `<p class="note" style="margin-top: 8px">${money(payment.historicAppliedMinor - payment.appliedMinor)} of this receipt sat on a bill that was later voided, so it counts as unapplied again.</p>`
+            : ''}
+          ${canApply ? `<div class="row" style="margin-top: 14px">
+              <div>
+                <label for="apply-invoice">Apply the rest to</label>
+                <select id="apply-invoice">${receivables.map((r) =>
+                  `<option value="${r.invoiceId}">${escapeHtml(r.invoiceNo)} — ${money(r.outstandingMinor, r.currency)} outstanding</option>`
+                ).join('')}</select>
+              </div>
+              <div style="flex: 0 1 150px">
+                <label for="apply-amount">Amount</label>
+                <input id="apply-amount" type="number" min="0.01" step="0.01" value="${(remainingMinor / 100).toFixed(2)}" />
+              </div>
+              <button class="primary" data-apply="${payment.id}">Apply</button>
+            </div>` : ''}
+          <div class="row" style="margin-top: 4px">
+            ${payment.method === 'cheque' && payment.status === 'pending' ? `<button class="primary" data-clear="${payment.id}">Bank cleared it</button>` : ''}
+            ${payment.method === 'cheque' && (payment.status === 'pending' || payment.status === 'cleared') ? `<button class="plain" data-bounce="${payment.id}">Bank returned it</button>` : ''}
+            ${payment.status !== 'cancelled' ? `<button class="plain" data-cancel-payment="${payment.id}">Cancel receipt</button>` : ''}
+          </div>`;
+
+        const apply = target.querySelector('[data-apply]');
+        if (apply) apply.addEventListener('click', () => run(async () => {
+          const invoiceId = target.querySelector('#apply-invoice').value;
+          if (!invoiceId) throw new Error('There is no open bill to apply this to.');
+          const amountMinor = toMinor(target.querySelector('#apply-amount').value);
+          const { payment: fresh } = await api('POST', `/api/payments/${payment.id}/apply`, {
+            allocations: [{ invoiceId: Number(invoiceId), amountMinor }],
+          });
+          await refreshMoney(fresh);
+          show('ok', `${money(amountMinor)} of ${fresh.paymentNo} applied.`);
+        }));
+
+        wirePaymentButtons(target);
+      }
+
+      async function loadStatement() {
+        const target = document.getElementById('statement');
+        if (!target) return;
+        const customerId = document.getElementById('statement-customer').value;
+        if (!customerId) {
+          target.innerHTML = '<p class="note">No customers yet.</p>';
+          return;
+        }
+        const { statement } = await api('GET', `/api/customers/${encodeURIComponent(customerId)}/statement`);
+
+        const balances = statement.balances.length === 0
+          ? '<p class="note">Nothing invoiced and nothing paid yet.</p>'
+          : statement.balances.map((b) => `
+              <h3>${escapeHtml(b.currency)}</h3>
+              <div class="figures">
+                <div class="figure owed"><span>Owed now</span><b>${money(b.outstandingMinor, b.currency)}</b></div>
+                <div class="figure"><span>Invoiced (${b.invoiceCount})</span><b>${money(b.invoicedMinor)}</b></div>
+                <div class="figure"><span>Settled</span><b>${money(b.settledMinor)}</b></div>
+                <div class="figure held"><span>Advance held</span><b>${money(b.advanceMinor)}</b></div>
+                <div class="figure"><span>Cheques waiting</span><b>${money(b.pendingChequeMinor)}</b></div>
+              </div>`).join('');
+
+        const invoices = statement.invoices.length === 0
+          ? '<p class="note">No issued bills.</p>'
+          : `<table>
+              <tr><th>Bill</th><th>Dated</th><th>Due</th><th class="num">Total</th><th class="num">Settled</th><th class="num">Owed</th></tr>
+              ${statement.invoices.map((i) => `<tr>
+                <td class="sku">${escapeHtml(i.invoiceNo)}</td>
+                <td>${escapeHtml(i.invoiceDate)}</td>
+                <td>${i.dueDate ? escapeHtml(i.dueDate) : '—'}</td>
+                <td class="num">${money(i.totalMinor)}</td>
+                <td class="num">${money(i.settledMinor)}</td>
+                <td class="num">${i.outstandingMinor > 0 ? `<strong>${money(i.outstandingMinor)}</strong>` : '—'}</td>
+              </tr>`).join('')}
+            </table>`;
+
+        const payments = statement.payments.length === 0
+          ? '<p class="note">No receipts yet.</p>'
+          : `<table>
+              <tr><th>Receipt</th><th>Received</th><th>Method</th><th>Status</th><th class="num">Amount</th><th class="num">Applied</th><th></th></tr>
+              ${statement.payments.map((p) => `<tr>
+                <td class="sku">${escapeHtml(p.paymentNo)}</td>
+                <td>${escapeHtml(p.receivedAt)}</td>
+                <td>${escapeHtml(p.method.replace(/_/g, ' '))}</td>
+                <td><span class="pill ${p.status}">${escapeHtml(p.status)}</span>${p.postDated ? ' <span class="pill pending">post-dated</span>' : ''}</td>
+                <td class="num">${money(p.amountMinor, p.currency)}</td>
+                <td class="num">${money(p.appliedMinor)}</td>
+                <td class="num"><button class="plain" data-open-payment="${p.id}">Open</button></td>
+              </tr>`).join('')}
+            </table>`;
+
+        target.innerHTML = `${balances}
+          <h3>Bills</h3>${invoices}
+          <h3>Receipts</h3>${payments}
+          <p class="note" style="margin-top: 10px">
+            Cheques waiting on the bank and advances not yet applied are shown, never subtracted from
+            what is owed.
+          </p>`;
+        wirePaymentButtons(target);
+      }
+
       /* --------------------------------------------------------------- boot */
 
       document.getElementById('stock-product').addEventListener('change', () => run(loadStockMatrix));
@@ -875,12 +1275,23 @@
         await Promise.all([loadStockMatrix(), loadLowStock()]);
       }));
       document.getElementById('line-product').addEventListener('change', () => run(loadVariantChoices));
+      document.getElementById('pay-method').addEventListener('change', syncChequeFields);
+      document.getElementById('pay-customer').addEventListener('change', () => run(loadPayableInvoices));
+      document.getElementById('statement-customer').addEventListener('change', () => run(loadStatement));
+      document.getElementById('statement-refresh').addEventListener('click', () => run(async () => {
+        await Promise.all([loadPendingCheques(), loadStatement(), loadPayableInvoices()]);
+      }));
 
       run(async () => {
         await loadProducts();
+        // loadCustomers fills the payment and statement pickers, so the two
+        // lists that depend on a chosen customer wait for it.
+        await loadCustomers();
+        syncChequeFields();
         await Promise.all([
-          loadStockMatrix(), loadLowStock(), loadCustomers(), loadVariantChoices(),
+          loadStockMatrix(), loadLowStock(), loadVariantChoices(),
           loadOrders(), loadBillable(), loadInvoices(),
+          loadPayableInvoices(), loadPendingCheques(), loadStatement(),
         ]);
         renderBasket();
       });

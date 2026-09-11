@@ -1,0 +1,8 @@
+$kind: 'http-request'
+name: 'View Employee History'
+order: 4000
+url: 'http://localhost:4000/api/earnings/employee/1'
+method: GET
+queryParams:
+  - key: 'year'
+    value: '2081'

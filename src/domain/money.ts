@@ -69,6 +69,14 @@ export function assertNonNegativeMinor(value: unknown, field = 'amount'): number
   return n;
 }
 
+export function assertPositiveMinor(value: unknown, field = 'amount'): number {
+  const n = assertMinor(value, field);
+  if (n <= 0) {
+    throw new ValidationError(`${field} must be greater than zero, got ${n}`, field);
+  }
+  return n;
+}
+
 export function assertPositiveQty(value: unknown, field = 'qty'): number {
   if (typeof value !== 'number' || !Number.isInteger(value)) {
     throw new ValidationError(`${field} must be a whole number of pieces, got ${JSON.stringify(value)}`, field);

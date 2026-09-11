@@ -17,7 +17,9 @@ import {
 } from '../../src/services/orders.ts';
 import { getAvailableQty, getStockOnHand, recordStockMovement } from '../../src/services/stock.ts';
 import { createCustomer } from '../../src/services/customers.ts';
+import { createDelivery, dispatchDelivery } from '../../src/services/deliveries.ts';
 import { setProductPrice, setVariantPrice } from '../../src/services/catalogue.ts';
+import { listAudit } from '../../src/services/audit.ts';
 import { BusinessRuleError, NotFoundError, ValidationError } from '../../src/domain/errors.ts';
 import { createTestDb, seedVariant, type TestDb } from '../helpers/testDb.ts';
 
@@ -661,7 +663,7 @@ test('shortages across open orders roll up per variant, worst first', () => {
     const second = transaction(t.db, (tx) =>
       createOrder(tx, {
         customerId: b.customerId,
-        requiredDate: '2026-09-10',
+        requiredDate: '2026-09-15',
         lines: [{ variantId: a.variantId, qtyOrdered: 30 }],
         userId: t.userId,
       }),
@@ -687,7 +689,7 @@ test('shortages across open orders roll up per variant, worst first', () => {
         ],
         '25 + 30 ordered against 10 on the shelf leaves 45; the other has none',
       );
-      assert.equal(shortages[0]?.earliestRequiredDate, '2026-09-10', 'the tightest deadline surfaces');
+      assert.equal(shortages[0]?.earliestRequiredDate, '2026-09-15', 'the tightest deadline surfaces');
     });
 
     // A cancelled order stops demanding production.
@@ -803,4 +805,64 @@ test('order numbers run in sequence per year and per document type', () => {
     );
     assert.deepEqual(numbers, ['ORD-2026-00001', 'ORD-2026-00002', 'ORD-2027-00001']);
   });
+
+  test('order mutations write audit trail records', () => {
+    withDb((t) => {
+      const s = seedSellable(t, { onHand: 10 });
+      const orderId = transaction(t.db, (tx) =>
+        createOrder(tx, {
+          customerId: s.customerId,
+          orderDate: '2026-08-24',
+          currency: 'NPR',
+          lines: [{ variantId: s.variantId, qtyOrdered: 5 }],
+          userId: 1,
+        }),
+      );
+
+      transaction(t.db, (tx) => confirmOrder(tx, orderId, 1));
+      transaction(t.db, (tx) => cancelOrder(tx, orderId, 'test cancel', 1));
+
+      const logs = readOnly(t.db, (tx) => listAudit(tx, { entityType: 'order', entityId: orderId }));
+      const actions = logs.map((l) => l.action);
+      assert.ok(actions.includes('order_created'));
+      assert.ok(actions.includes('order_confirmed'));
+      assert.ok(actions.includes('order_cancelled'));
+    });
+  });
 });
+
+test('can close a partially delivered order', () => {
+  withDb((t) => {
+    const s = seedSellable(t, { onHand: 50 });
+    const orderId = transaction(t.db, (tx) =>
+      createOrder(tx, {
+        customerId: s.customerId,
+        lines: [{ variantId: s.variantId, qtyOrdered: 50 }],
+        userId: t.userId,
+      }),
+    );
+    transaction(t.db, (tx) => confirmOrder(tx, orderId, t.userId));
+
+    // Dispatch partial
+    const deliveryId = transaction(t.db, (tx) => {
+      const dId = createDelivery(tx, { orderId, deliveredAt: '2026-08-27', lines: [{ orderLineId: getOrder(tx, orderId).lines[0]!.id, qty: 20 }], userId: t.userId });
+      dispatchDelivery(tx, dId.id, t.userId);
+      return dId.id;
+    });
+
+    readOnly(t.db, (tx) => {
+      assert.equal(getOrder(tx, orderId).status, 'partially_delivered');
+      assert.equal(getAvailableQty(tx, s.variantId), 0); // 30 remaining allocated
+    });
+
+    // Close short
+    transaction(t.db, (tx) => closeOrder(tx, orderId, t.userId));
+
+    readOnly(t.db, (tx) => {
+      assert.equal(getOrder(tx, orderId).status, 'closed');
+      assert.equal(getAvailableQty(tx, s.variantId), 30, 'previously allocated stock should be released');
+    });
+  });
+});
+
+
