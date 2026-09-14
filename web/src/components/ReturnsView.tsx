@@ -15,7 +15,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ deliveries, customers,
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
   const [selectedLineId, setSelectedLineId] = useState<number | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [qty, setQty] = useState<number>(1);
+  const [qty, setQty] = useState<number | null>(null);
   const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -38,7 +38,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ deliveries, customers,
 
   const handleReturn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDeliveryId || !selectedLineId || !selectedVariantId || qty <= 0 || !reason.trim()) {
+    if (!selectedDeliveryId || !selectedLineId || !selectedVariantId || !qty || qty <= 0 || !reason.trim()) {
       setError('All fields are required');
       return;
     }
@@ -62,7 +62,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ deliveries, customers,
       setSelectedLineId(null);
       setSelectedVariantId(null);
       setDeliveryDetail(null);
-      setQty(1);
+      setQty(null);
       setReason('');
       onRefresh();
     } catch (err: any) {
@@ -185,8 +185,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ deliveries, customers,
               <input
                 type="number"
                 min="1"
-                value={qty}
-                onChange={(e) => setQty(Number(e.target.value))}
+                value={qty ?? ''}
+                onChange={(e) => setQty(e.target.value ? Number(e.target.value) : null)}
+                placeholder="Enter quantity to return..."
                 className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 required
               />

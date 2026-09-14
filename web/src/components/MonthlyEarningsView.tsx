@@ -170,7 +170,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
             >
               {NEPALI_MONTHS.map((m) => (
                 <option key={m.value} value={m.value}>
-                  {m.value}. {m.label}
+                  {m.label}
                 </option>
               ))}
             </select>

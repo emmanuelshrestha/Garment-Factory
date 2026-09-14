@@ -85,6 +85,15 @@ export function createSize(tx: Tx, name: string, sortOrder: number): number {
   );
 }
 
+export function setSizeActive(tx: Tx, sizeId: number, isActive: boolean): void {
+  const info = tx.db
+    .prepare('UPDATE sizes SET is_active = ? WHERE id = ?')
+    .run(isActive ? 1 : 0, sizeId);
+  if (Number(info.changes) === 0) {
+    throw new NotFoundError('size', sizeId);
+  }
+}
+
 export function listSizes(tx: Tx, activeOnly = false): Size[] {
   const rows = tx.db
     .prepare(

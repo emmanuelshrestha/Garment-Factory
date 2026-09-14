@@ -415,11 +415,15 @@ export const api = {
   getColours: () => request<{ colours: Colour[] }>('/api/colours'),
   createColour: (name: string) =>
     request<{ id: number }>('/api/colours', { method: 'POST', body: JSON.stringify({ name }) }),
+  deactivateColour: (id: number) =>
+    request<{ ok: boolean }>(`/api/colours/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }),
 
   // Catalogue — sizes
   getSizes: () => request<{ sizes: Size[] }>('/api/sizes'),
   createSize: (name: string, sortOrder: number) =>
     request<{ id: number }>('/api/sizes', { method: 'POST', body: JSON.stringify({ name, sortOrder }) }),
+  deactivateSize: (id: number) =>
+    request<{ ok: boolean }>(`/api/sizes/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }),
 
   // Catalogue — products
   getProducts: () => request<{ products: Product[] }>('/api/products'),

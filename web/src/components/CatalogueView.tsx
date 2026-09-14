@@ -446,6 +446,12 @@ const ColoursPanel: React.FC = () => {
     finally { setSaving(false); }
   };
 
+  const handleDelete = async (c: Colour) => {
+    if (!confirm(`Delete colour "${c.name}"? This will hide it from variant generation.`)) return;
+    try { await api.deactivateColour(c.id); await load(); }
+    catch (e: any) { alert(e.message); }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100">
@@ -466,10 +472,21 @@ const ColoursPanel: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {colours.map((c) => (
-              <div key={c.id} className="flex items-center space-x-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="w-4 h-4 rounded-full bg-slate-400 shrink-0" />
-                <span className="text-sm font-semibold text-slate-800">{c.name}</span>
-                {!c.isActive && <span className="text-xs text-red-500">(off)</span>}
+              <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <span className="w-4 h-4 rounded-full bg-slate-400 shrink-0" />
+                  <span className="text-sm font-semibold text-slate-800 truncate">{c.name}</span>
+                  {!c.isActive && <span className="text-xs text-red-500">(off)</span>}
+                </div>
+                {c.isActive && (
+                  <button
+                    onClick={() => handleDelete(c)}
+                    className="ml-2 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-bold rounded-lg transition shrink-0"
+                    title="Delete colour"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -512,6 +529,12 @@ const SizesPanel: React.FC = () => {
     finally { setSaving(false); }
   };
 
+  const handleDelete = async (s: Size) => {
+    if (!confirm(`Delete size "${s.name}"? This will hide it from variant generation.`)) return;
+    try { await api.deactivateSize(s.id); await load(); }
+    catch (e: any) { alert(e.message); }
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-slate-100">
@@ -534,8 +557,20 @@ const SizesPanel: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {sizes.map((s) => (
               <div key={s.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="text-sm font-bold text-slate-800">{s.name}</span>
-                <span className="text-[10px] font-mono text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">Sort: {s.sortOrder}</span>
+                <div className="flex items-center space-x-2 min-w-0">
+                  <span className="text-sm font-bold text-slate-800">{s.name}</span>
+                  {!s.isActive && <span className="text-xs text-red-500">(off)</span>}
+                  <span className="text-[10px] font-mono text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">Sort: {s.sortOrder}</span>
+                </div>
+                {s.isActive && (
+                  <button
+                    onClick={() => handleDelete(s)}
+                    className="ml-2 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-bold rounded-lg transition shrink-0"
+                    title="Delete size"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             ))}
           </div>

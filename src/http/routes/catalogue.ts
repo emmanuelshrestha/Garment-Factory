@@ -18,7 +18,9 @@ import {
   listSizes,
   listVariants,
   resolveVariantPrice,
+  setColourActive,
   setProductPrice,
+  setSizeActive,
   setVariantActive,
   setVariantMinStock,
   setVariantPrice,
@@ -57,6 +59,18 @@ export function catalogueRoutes(app: AppContext): Route[] {
       },
     },
     {
+      method: 'PATCH',
+      pattern: '/api/colours/:id',
+      handler: async ({ req, res, params }) => {
+        const colourId = requireInt(params.id, 'id');
+        const body = await readJsonBody(req);
+        transaction(app.db, (tx) =>
+          setColourActive(tx, colourId, optionalBoolean(body.isActive, 'isActive') ?? false),
+        );
+        sendJson(res, 200, { ok: true });
+      },
+    },
+    {
       method: 'GET',
       pattern: '/api/sizes',
       handler: ({ res, query }) => {
@@ -73,6 +87,18 @@ export function catalogueRoutes(app: AppContext): Route[] {
           createSize(tx, requireString(body.name, 'name'), requireInt(body.sortOrder, 'sortOrder')),
         );
         sendJson(res, 201, { id });
+      },
+    },
+    {
+      method: 'PATCH',
+      pattern: '/api/sizes/:id',
+      handler: async ({ req, res, params }) => {
+        const sizeId = requireInt(params.id, 'id');
+        const body = await readJsonBody(req);
+        transaction(app.db, (tx) =>
+          setSizeActive(tx, sizeId, optionalBoolean(body.isActive, 'isActive') ?? false),
+        );
+        sendJson(res, 200, { ok: true });
       },
     },
     {
