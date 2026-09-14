@@ -134,14 +134,14 @@ const ProductsPanel: React.FC = () => {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Code</th>
-                <th className="py-3 px-4">Name</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4 text-right">Default Price</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-center">Actions</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Code</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Name</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Category</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Default Price</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -156,7 +156,7 @@ const ProductsPanel: React.FC = () => {
                     {p.defaultPriceMinor ? formatMoney(p.defaultPriceMinor, p.defaultCurrency) : '—'}
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${p.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800 line-through'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${p.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200 line-through'}`}>
                       {p.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -327,15 +327,15 @@ const CustomersPanel: React.FC = () => {
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Code</th>
-                <th className="py-3 px-4">Name</th>
-                <th className="py-3 px-4">Phone</th>
-                <th className="py-3 px-4">Address</th>
-                <th className="py-3 px-4">Currency</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-center">Actions</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Code</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Name</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Phone</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Address</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Currency</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -349,7 +349,7 @@ const CustomersPanel: React.FC = () => {
                   <td className="py-3 px-4 text-xs text-slate-500 max-w-xs truncate">{c.address || '—'}</td>
                   <td className="py-3 px-4 text-xs font-bold text-slate-700">{c.defaultCurrency}</td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${c.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800 line-through'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200 line-through'}`}>
                       {c.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -626,7 +626,7 @@ const VariantsPanel: React.FC = () => {
         {error && <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-semibold">{error}</div>}
         {result && (
           <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-semibold border border-emerald-200">
-            ✓ Generated {result.created.length} new variant{result.created.length !== 1 ? 's' : ''}
+            Generated {result.created.length} new variant{result.created.length !== 1 ? 's' : ''}
             {openingStockQty > 0 && <> with {openingStockQty} pieces each in stock</>}
             {result.skipped > 0 && <> • {result.skipped} already existed (skipped)</>}
           </div>
@@ -667,12 +667,12 @@ const VariantsPanel: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Opening Stock per Variant</label>
-            <input type="number" min="0" value={openingStockQty} onChange={e => setOpeningStockQty(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold" />
+            <input type="number" min="0" value={openingStockQty === 0 ? "" : openingStockQty} placeholder="0" onChange={e => setOpeningStockQty(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold" />
             <span className="text-[10px] text-slate-500 mt-0.5 block">pieces added to inventory on creation</span>
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Minimum Stock Threshold</label>
-            <input type="number" min="0" value={minStockQty} onChange={e => setMinStockQty(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold" />
+            <input type="number" min="0" value={minStockQty === 0 ? "" : minStockQty} placeholder="0" onChange={e => setMinStockQty(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-semibold" />
             <span className="text-[10px] text-slate-500 mt-0.5 block">triggers amber/red alerts when stock falls below</span>
           </div>
         </div>
@@ -719,12 +719,12 @@ const VariantsPanel: React.FC = () => {
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-2.5 text-left text-[10px] font-black text-slate-600 uppercase tracking-wider">SKU</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-black text-slate-600 uppercase tracking-wider">Colour</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-black text-slate-600 uppercase tracking-wider">Size</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-black text-slate-600 uppercase tracking-wider">Min Stock</th>
-                <th className="px-4 py-2.5 text-left text-[10px] font-black text-slate-600 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-2.5 text-right text-[10px] font-black text-slate-600 uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider">SKU</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider">Colour</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider">Size</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-medium text-slate-500 uppercase tracking-wider">Min Stock</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

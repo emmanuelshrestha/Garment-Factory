@@ -383,9 +383,15 @@ export type DashboardSummary = {
 // ─── HTTP client ──────────────────────────────────────────────────────────────
 
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const tenantSlug = localStorage.getItem('tenantSlug') ?? '';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(opts.headers as Record<string, string> ?? {}) };
+  if (tenantSlug) {
+    headers['x-tenant-slug'] = tenantSlug;
+  }
   const res = await fetch(path, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', ...(opts.headers ?? {}) },
+    headers,
+    credentials: 'include',
   });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -725,4 +731,66 @@ export const api = {
     request<{ summary: MonthlyEarningsSummary[] }>(`/api/earnings/monthly?year=${fiscalYear}&month=${month}`),
   getEmployeeHistory: (employeeId: number, fiscalYear?: number) =>
     request<{ history: EarningsEntry[] }>(`/api/earnings/employee/${employeeId}${fiscalYear ? `?year=${fiscalYear}` : ''}`),
+
+  // ─── Auth ─────────────────────────────────────────────────────────────────────
+  async login(username: string, password: string): Promise<{ user: { id: number; username: string; displayName: string } }> {
+    const tenantSlug = localStorage.getItem('tenantSlug') ?? '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (tenantSlug) {
+      headers['x-tenant-slug'] = tenantSlug;
+    }
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message || 'Login failed');
+    }
+    return response.json();
+  },
+
+  async logout(): Promise<void> {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenantSlug');
+  },
+
+  // Returns
+  createReturn: (input: {
+    deliveryId: number;
+    deliveryLineId: number;
+    variantId: number;
+    qty: number;
+    returnDate: string;
+    reason: string;
+  }) =>
+    request<{ movementId: number }>('/api/stock/returns', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  voidAndReissueForReturn: (input: {
+    originalInvoiceId: number;
+    returnedDeliveryLineIds: number[];
+    newInvoiceDate?: string;
+    discountMinor?: number;
+    discountReason?: string;
+  }) =>
+    request<{ invoice: Invoice }>(`/api/invoices/${input.originalInvoiceId}/void-and-reissue-for-return`, {
+      method: 'POST',
+      body: JSON.stringify({
+        returnedDeliveryLineIds: input.returnedDeliveryLineIds,
+        newInvoiceDate: input.newInvoiceDate,
+        discountMinor: input.discountMinor,
+        discountReason: input.discountReason,
+      }),
+    }),
+
 };

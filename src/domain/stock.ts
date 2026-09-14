@@ -82,3 +82,41 @@ export function assertAmberPercent(value: unknown, field = 'amberPercent'): numb
   }
   return value;
 }
+
+/**
+ * Return-in ledger entry.
+ *
+ * Returns go straight into sellable finished stock (owner decision).
+ * A return is attached to one delivery (the one it reverses).
+ *
+ * Multi-line returns (goods from several deliveries in one lot) are a
+ * later feature. For now, the owner enters one return per delivery.
+ */
+export type ReturnInput = {
+  deliveryId: number;
+  deliveryLineId: number;
+  variantId: number;
+  qty: number;
+  returnDate: string; // YYYY-MM-DD
+  reason: string;
+  userId: number;
+};
+
+/**
+ * Validate a return input.
+ * - qty must be positive integer
+ * - returnDate must be a valid date string
+ * - reason must not be empty
+ */
+export function validateReturnInput(input: ReturnInput): void {
+  assertQtyInteger(input.qty, 'qty');
+  if (input.qty <= 0) {
+    throw new ValidationError('return quantity must be positive', 'qty');
+  }
+  if (!input.returnDate || !input.returnDate.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)) {
+    throw new ValidationError('return date must be YYYY-MM-DD', 'returnDate');
+  }
+  if (!input.reason || !input.reason.trim()) {
+    throw new ValidationError('return requires a reason', 'reason');
+  }
+}

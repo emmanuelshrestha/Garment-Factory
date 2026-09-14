@@ -22,7 +22,7 @@ import {
   type StockBand,
   availableQty,
   stockBand,
-} from '../domain/stock.ts';
+validateReturnInput} from '../domain/stock.ts';
 import { getIntSetting } from './settings.ts';
 import { nextDocumentNumber } from './documentNumbers.ts';
 import { recordAudit } from './audit.ts';
@@ -536,4 +536,75 @@ function normaliseReason(reason: string | null | undefined): string | null {
   }
   const trimmed = reason.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+/**
+ * Record a goods return from a customer.
+ *
+ * Returns go straight into sellable finished stock (owner decision).
+ * This writes a 'return_in' movement to the ledger.
+ *
+ * The return is attached to the delivery line it came from, so the stock
+ * movement can be traced back to the original delivery.
+ */
+export function recordReturn(
+  tx: Tx,
+  input: {
+    deliveryId: number;
+    deliveryLineId: number;
+    variantId: number;
+    qty: number;
+    returnDate: string; // YYYY-MM-DD
+    reason: string;
+    userId: number;
+  },
+): number {
+  // Validate the input
+  validateReturnInput(input);
+  assertVariantExists(tx, input.variantId);
+
+  // Verify the delivery line exists and belongs to the given delivery
+  const line = tx.db
+    .prepare(
+      `SELECT id FROM delivery_lines
+        WHERE id = ? AND delivery_id = ?`,
+    )
+    .get(input.deliveryLineId, input.deliveryId) as { id: number } | undefined;
+  if (!line) {
+    throw new BusinessRuleError(
+      'return_delivery_line_not_found',
+      `delivery line ${input.deliveryLineId} does not belong to delivery ${input.deliveryId}`,
+      { deliveryId: input.deliveryId, deliveryLineId: input.deliveryLineId },
+    );
+  }
+
+  // Record the stock movement: +qty to the variant
+  const movementId = recordStockMovement(tx, {
+    variantId: input.variantId,
+    qty: input.qty,
+    movementType: 'return_in',
+    refType: 'return',
+    refId: null, // Returns don't have their own doc type yet; ref_type = 'return' is enough
+    occurredAt: input.returnDate,
+    reason: input.reason,
+    userId: input.userId,
+  });
+
+  // Record the audit
+  recordAudit(tx, {
+    action: 'stock_return_recorded',
+    entityType: 'stock_return',
+    entityId: movementId,
+    detail: {
+      deliveryId: input.deliveryId,
+      deliveryLineId: input.deliveryLineId,
+      variantId: input.variantId,
+      qty: input.qty,
+      returnDate: input.returnDate,
+      reason: input.reason,
+    },
+    userId: input.userId,
+  });
+
+  return movementId;
 }

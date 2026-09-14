@@ -1,16 +1,16 @@
 # Deployment Checklist
 
 **System:** Garment Factory Management System  
-**Version:** 1.0.0  
+**Version:** 1.1.0  
 **Status:** Production-ready  
-**Date:** 2026-09-11
+**Date:** 2026-09-14
 
 ---
 
 ## Pre-Deployment Verification
 
 ### ✅ Code Quality
-- [x] All 300 tests passing
+- [x] All 312 tests passing (returns + void-reissue added)
 - [x] Zero test failures
 - [x] TypeScript compiles without errors
 - [x] No console errors in development
@@ -35,6 +35,7 @@
 - [x] Order lifecycle functional
 - [x] Invoice generation working
 - [x] Payment recording functional
+- [x] Returns functional (record return, void-and-reissue)
 - [x] Dashboard displays KPIs
 
 ---
@@ -74,9 +75,9 @@ cd ..
 Create `.env` file in project root:
 
 ```env
-DATABASE_PATH=./data/production.db
-PORT=4000
-HOST=0.0.0.0
+GARMENT_DB_PATH=./data/production.db
+GARMENT_PORT=4000
+GARMENT_HOST=0.0.0.0
 ```
 
 ### 5. Initialize Database
@@ -332,8 +333,7 @@ For issues or questions:
 
 ---
 
-**Deployment Date:** _______________  
+**Date:** 2026-09-14
 **Deployed By:** _______________  
 **Verified By:** _______________  
 **Sign-off:** _______________
-

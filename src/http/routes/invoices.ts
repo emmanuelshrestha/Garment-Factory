@@ -20,7 +20,7 @@ import {
   listInvoices,
   voidInvoice,
   type InvoiceStatus,
-} from '../../services/invoices.ts';
+} from '../../services/invoices.ts'; import { voidAndReissueForReturn } from '../../services/invoices.ts';
 import type { AppContext } from '../context.ts';
 import type { Route } from '../router.ts';
 import {
@@ -125,6 +125,36 @@ export function invoiceRoutes(app: AppContext): Route[] {
         const body = await readJsonBody(req);
         const invoice = transaction(app.db, (tx) =>
           voidInvoice(tx, invoiceId, requireString(body.reason, 'reason'), app.currentUserId),
+        );
+        sendJson(res, 200, { invoice });
+      },
+    },
+
+    {
+      // Void the original bill, then issue a fresh one for the lines that were
+      // NOT returned. Used from the Returns screen when an issued invoice has
+      // to shrink because goods came back (D025 keeps returned lines billable).
+      method: 'POST',
+      pattern: '/api/invoices/:id/void-and-reissue-for-return',
+      handler: async ({ req, res, params }) => {
+        const invoiceId = requireInt(params.id, 'id');
+        const body = await readJsonBody(req);
+        const returnedDeliveryLineIds = readLineIds(body.returnedDeliveryLineIds) ?? [];
+        if (returnedDeliveryLineIds.length === 0) {
+          throw new ValidationError(
+            'returnedDeliveryLineIds must be a non-empty array',
+            'returnedDeliveryLineIds',
+          );
+        }
+        const invoice = transaction(app.db, (tx) =>
+          voidAndReissueForReturn(tx, {
+            originalInvoiceId: invoiceId,
+            returnedDeliveryLineIds,
+            newInvoiceDate: optionalString(body.newInvoiceDate, 'newInvoiceDate'),
+            discountMinor: optionalInt(body.discountMinor, 'discountMinor'),
+            discountReason: optionalString(body.discountReason, 'discountReason') ?? null,
+            userId: app.currentUserId,
+          }),
         );
         sendJson(res, 200, { invoice });
       },

@@ -141,7 +141,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-              Fiscal Year
+              Year
             </label>
             <select
               value={fiscalYear}
@@ -152,7 +152,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
                 const year = CURRENT_FISCAL_YEAR - i;
                 return (
                   <option key={year} value={year}>
-                    {year} / {year + 1}
+                    {year}
                   </option>
                 );
               })}
@@ -226,7 +226,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
         <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
           <div>
             <h3 className="font-bold text-slate-900">
-              {currentMonthLabel} {fiscalYear} / {fiscalYear + 1}
+              {currentMonthLabel} {fiscalYear}
             </h3>
             <p className="text-sm text-slate-600 mt-0.5">
               {summary.length} active employee{summary.length !== 1 ? 's' : ''}
@@ -252,28 +252,28 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Tailor #
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-right py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Qty
                   </th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-right py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Total
                   </th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-right py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Advance
                   </th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-right py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Others
                   </th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-right py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Due
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -290,24 +290,24 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
                       <div className="font-medium text-slate-900">{entry.employeeName}</div>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="text-sm font-medium text-slate-900">{entry.quantity.toLocaleString()}</div>
+                      <div className="text-sm font-mono tabular-nums font-medium text-slate-900">{entry.quantity.toLocaleString()}</div>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="text-sm font-medium text-slate-900">{formatMoney(entry.totalEarned)}</div>
+                      <div className="text-sm font-mono tabular-nums font-medium text-slate-900">{formatMoney(entry.totalEarned)}</div>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="text-sm font-medium text-slate-700">
+                      <div className="text-sm font-mono tabular-nums font-medium text-slate-700">
                         {entry.advance > 0 ? formatMoney(entry.advance) : '-'}
                       </div>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="text-sm font-medium text-slate-700">
+                      <div className="text-sm font-mono tabular-nums font-medium text-slate-700">
                         {entry.others > 0 ? formatMoney(entry.others) : '-'}
                       </div>
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className={`text-sm font-bold ${
-                        entry.closingDue > 0 ? 'text-amber-600' : 'text-green-600'
+                      <div className={`text-sm font-mono tabular-nums font-bold ${
+                        entry.closingDue > 0 ? 'text-amber-600' : 'text-emerald-600'
                       }`}>
                         {formatMoney(entry.closingDue)}
                       </div>
@@ -353,7 +353,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({ employ
             <div className="p-6 border-b border-slate-200">
               <h3 className="font-bold text-slate-900">Record Earnings</h3>
               <p className="text-sm text-slate-600 mt-1">
-                {currentMonthLabel} {fiscalYear} / {fiscalYear + 1}
+                {currentMonthLabel} {fiscalYear}
               </p>
             </div>
             

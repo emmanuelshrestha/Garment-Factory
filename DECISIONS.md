@@ -634,3 +634,60 @@ Nothing is blocked today: the owner can still correct a mistaken dispatch
 by recording a stock adjustment with a reason, which leaves both the
 original movement and the correction visible in the ledger. A proper
 returns flow is the clean answer, and it is a slice of its own.
+
+## D030 — Returned goods go straight back into sellable stock — CONFIRMED
+
+Owner decision, 2026-09-14 (asked while completing Slice 1).
+
+When a customer sends jackets back after dispatch, the pieces return to
+**sellable finished stock immediately**. A return writes a `return_in`
+movement on the finished-goods ledger (the movement type and `ref_type =
+'return'` already existed in migration 001). The pieces are available for
+new orders the moment the return is recorded.
+
+Chosen over a "returned, needs checking" holding state: the factory is a
+one-owner operation and the owner's rule is that a returned jacket goes
+back on the shelf.
+
+A return is attached to **one delivery** (the one it reverses). Multi-
+delivery lots are a later feature.
+
+## D031 — A return on an issued invoice is void-and-reissue — CONFIRMED
+
+Owner decision, 2026-09-14 (asked while completing Slice 1).
+
+If the returned goods were already on an issued invoice, the original
+invoice is **voided and a new invoice is issued for what the customer
+kept** (D005's correction path).
+
+- Returning **all** goods on the bill: the invoice is merely voided. The
+  delivery lines become billable again (D025's trigger ignores voided
+  invoices).
+- Returning **some** goods: the original is voided and a new invoice is
+  created for the non-returned lines, at the same prices (the order's
+  snapshot, so nothing re-prices). The new invoice keeps the customer,
+  order, currency, and due date of the original; a void reason names the
+  returned descriptions.
+- The returned delivery lines are freed by the void, so a future delivery
+  can re-issue them if the factory decides to re-sell.
+
+Both invoices survive in history: the voided original and the replacement.
+This is the same audit shape as D005 / D025.
+
+---
+
+## OPEN-5 — RESOLVED: close short
+
+Owner decision, 2026-09-14: a part-delivered order is closed with a
+"close remainder" action — the delivered pieces stand, the undelivered
+remainder is dropped, and its reservations are released. Implemented in
+`closeOrder` (which already released allocations for part-delivered
+orders).
+
+## OPEN-7 — RESOLVED by D030 + D031
+
+## OPEN-6 — superseded by the auth flow
+
+Authentication now exists (login page, session cookie, scrypt hashing).
+Deployment keeps the app bound to `127.0.0.1` by default; LAN bind
+requires `GARMENT_HOST=0.0.0.0` and auth is enforced in production.

@@ -1,6 +1,6 @@
 {
   "name": "garment-factory",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -14,7 +14,9 @@
     "seed": "node scripts/seed.ts",
     "seed:demo": "node scripts/seed.ts --demo",
     "backup": "node scripts/backup.ts",
-    "verify-ledger": "node scripts/verify-ledger.ts"
+    "verify-ledger": "node scripts/verify-ledger.ts",
+    "create-tenant": "node scripts/create-tenant.ts",
+    "list-tenants": "node scripts/list-tenants.ts"
   },
   "dependencies": {},
   "devDependencies": {}

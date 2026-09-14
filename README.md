@@ -53,6 +53,7 @@ Customer
 | **Invoices** | Bill dispatched lines. Optional discount *with a mandatory reason*. Issued invoices cannot be edited |
 | **Payments** | Cash, bank transfer, cheque. Pending cheques do **not** reduce receivables. Bounce restores the balance and keeps history |
 | **Statements** | Per-customer, per-currency. Unallocated cleared money is an **advance**, not a silent net-off |
+| **Returns** | Record goods coming back from a customer. Pieces go straight back into sellable finished stock (append-only `return_in` movement). If the goods were already invoiced, void-and-reissue creates a new bill for what the customer kept. |
 | **Cutting stock** | Separate ledger from finished goods. Transfer to finished is the only path that increases sellable stock |
 | **Expenses / purchases** | Factory spend and raw-material purchases — purchases never touch finished stock |
 | **Employee earnings** | Tailor numbers, monthly / yearly earnings (Nepali fiscal months in the UI) |

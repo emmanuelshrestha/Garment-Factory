@@ -647,3 +647,130 @@ type InvoiceSummaryRow = {
   status: string;
   line_count: number;
 };
+
+/**
+ * Void an invoice and create a new one for the remaining goods (return scenario).
+ *
+ * When a customer returns some goods from a delivered invoice, this:
+ * 1. Voids the original invoice (keeping it as history)
+ * 2. Creates a new invoice for only the non-returned delivery lines
+ *
+ * The returned goods become billable again via the D025 trigger (which ignores
+ * voided invoices), so they can be billed on a future invoice if needed.
+ */
+export function voidAndReissueForReturn(
+  tx: Tx,
+  input: {
+    originalInvoiceId: number;
+    returnedDeliveryLineIds: number[];
+    newInvoiceDate?: string;
+    discountMinor?: number;
+    discountReason?: string;
+    userId: number;
+  },
+): Invoice {
+  const original = getInvoice(tx, input.originalInvoiceId);
+  
+  if (original.status !== 'issued') {
+    throw new BusinessRuleError(
+      'invoice_not_issued',
+      'only an issued invoice can be voided and reissued for a return',
+      { invoiceId: input.originalInvoiceId, status: original.status },
+    );
+  }
+
+  const originalLineIds = new Set(original.lines.map(l => l.deliveryLineId));
+  const invalidIds = input.returnedDeliveryLineIds.filter(id => !originalLineIds.has(id));
+  if (invalidIds.length > 0) {
+    throw new ValidationError(
+      'returned_lines_not_on_invoice',
+      `delivery lines ${invalidIds.join(', ')} are not on invoice ${original.invoiceNo}`,
+      { invoiceId: input.originalInvoiceId, invalidLineIds: invalidIds },
+    );
+  }
+
+  const returnedSet = new Set(input.returnedDeliveryLineIds);
+  const linesToKeep = original.lines.filter(l => !returnedSet.has(l.deliveryLineId));
+  
+  if (linesToKeep.length === 0) {
+    const voidReason = `Return of all goods: ${original.lines.map(l => l.description).join(', ')}`;
+    return voidInvoice(tx, input.originalInvoiceId, voidReason, input.userId);
+  }
+
+  const voidReason = `Return: ${original.lines.filter(l => returnedSet.has(l.deliveryLineId)).map(l => l.description).join(', ')}`;
+  voidInvoice(tx, input.originalInvoiceId, voidReason, input.userId);
+
+  const lineRequests: InvoiceLineRequest[] = linesToKeep.map(line => ({
+    deliveryLineId: line.deliveryLineId,
+    variantId: line.variantId,
+    descriptionSnapshot: line.description,
+    qty: line.qty,
+    unitPriceMinor: line.unitPriceMinor,
+  }));
+
+  const invoiceDate = assertDate(input.newInvoiceDate ?? today(), 'invoiceDate');
+  const built = buildInvoice(lineRequests, {
+    minor: input.discountMinor ?? 0,
+    reason: input.discountReason,
+  });
+
+  const invoiceNo = nextDocumentNumber(tx, 'INV', documentYear(invoiceDate));
+  const info = tx.db
+    .prepare(
+      `INSERT INTO invoices
+         (invoice_no, customer_id, order_id, invoice_date, due_date, currency, fx_rate_to_npr,
+          subtotal_minor, discount_minor, discount_reason, total_minor, status,
+          created_at, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`,
+    )
+    .run(
+      invoiceNo,
+      original.customerId,
+      original.orderId,
+      invoiceDate,
+      original.dueDate,
+      original.currency,
+      original.fxRateToNpr,
+      built.subtotalMinor,
+      built.discountMinor,
+      built.discountMinor > 0 ? (input.discountReason ?? '').trim() : null,
+      built.totalMinor,
+      nowTimestamp(),
+      input.userId,
+    );
+
+  const newInvoiceId = Number(info.lastInsertRowid);
+  const insertLine = tx.db.prepare(
+    `INSERT INTO invoice_lines
+       (invoice_id, delivery_line_id, variant_id, description_snapshot, qty,
+        unit_price_minor, line_total_minor)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  for (const line of built.lines) {
+    insertLine.run(
+      newInvoiceId,
+      line.deliveryLineId,
+      line.variantId,
+      line.descriptionSnapshot,
+      line.qty,
+      line.unitPriceMinor,
+      line.lineTotalMinor,
+    );
+  }
+
+  recordAudit(tx, {
+    action: 'invoice_voided_and_reissued_for_return',
+    entityType: 'invoice',
+    entityId: newInvoiceId,
+    detail: {
+      originalInvoiceId: input.originalInvoiceId,
+      originalInvoiceNo: original.invoiceNo,
+      newInvoiceNo: invoiceNo,
+      returnedLineCount: input.returnedDeliveryLineIds.length,
+      keptLineCount: linesToKeep.length,
+    },
+    userId: input.userId,
+  });
+
+  return getInvoice(tx, newInvoiceId);
+}

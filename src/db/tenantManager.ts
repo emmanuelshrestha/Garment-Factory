@@ -1,32 +1,47 @@
 /**
- * Tenant database connection manager (Model C1).
- * Caches tenant database connections, ensures tenant DB directories and migrations exist.
+ * Tenant database connections.
+ *
+ * One SQLite file per factory, opened on first use and cached for the
+ * process lifetime. A request that cannot name a registered, active
+ * factory never reaches a ledger.
+ *
+ * `src/db/tenants.ts` used to auto-create a file from any slug. That is
+ * gone: factories are provisioned by command, not by the first HTTP hit.
  */
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { openDatabase, closeDatabase, type Db } from './sqlite.ts';
+import { closeDatabase, openDatabase, type Db } from './sqlite.ts';
 import { migrate } from './migrate.ts';
-import { openControlDb, getTenantBySlug } from './control.ts';
+import { getTenantBySlug, openControlDb } from './control.ts';
 
 const tenantCache = new Map<string, Db>();
 
+export class TenantNotFoundError extends Error {
+  readonly slug: string;
+  constructor(slug: string) {
+    super(`Tenant '${slug}' was not found or is inactive.`);
+    this.name = 'TenantNotFoundError';
+    this.slug = slug;
+  }
+}
+
 export function getTenantDb(slug: string): Db {
-  if (tenantCache.has(slug)) {
-    return tenantCache.get(slug)!;
+  const cached = tenantCache.get(slug);
+  if (cached) {
+    return cached;
   }
 
   const controlDb = openControlDb();
   try {
     const tenant = getTenantBySlug(controlDb, slug);
     if (!tenant || !tenant.isActive) {
-      throw new Error(`Tenant '${slug}' not found or inactive`);
+      throw new TenantNotFoundError(slug);
     }
 
     mkdirSync(dirname(tenant.dbPath), { recursive: true });
     const db = openDatabase(tenant.dbPath);
     migrate(db);
-
     tenantCache.set(slug, db);
     return db;
   } finally {
@@ -35,7 +50,7 @@ export function getTenantDb(slug: string): Db {
 }
 
 export function closeAllTenantDbs(): void {
-  for (const [slug, db] of tenantCache.entries()) {
+  for (const db of tenantCache.values()) {
     closeDatabase(db);
   }
   tenantCache.clear();

@@ -7,7 +7,6 @@ interface OrdersListProps {
   customers: Customer[];
   invoices: Invoice[];
   onRefresh: () => void;
-  onCreateDelivery: (order: Order) => void;
 }
 
 export const OrdersList: React.FC<OrdersListProps> = ({
@@ -15,7 +14,6 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   customers,
   invoices,
   onRefresh,
-  onCreateDelivery,
 }) => {
   // Modal state
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -24,6 +22,11 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
+  const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
+  const [dispatchLines, setDispatchLines] = useState<Record<number, number>>({});
+  const [dispatchSubmitting, setDispatchSubmitting] = useState<boolean>(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   // Filter state
   const [filterCustomerId, setFilterCustomerId] = useState<string>('');
@@ -109,15 +112,61 @@ export const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
+  const openDispatchModal = async (ord: Order) => {
+    setActionLoading(true);
+    setDispatchError(null);
+    try {
+      const { order: fullOrder } = await api.getOrder(ord.id);
+      const initialQuantities: Record<number, number> = {};
+      (fullOrder.lines ?? []).forEach((l) => {
+        const remaining = l.qtyOrdered - l.qtyDelivered;
+        if (remaining > 0) initialQuantities[l.id] = remaining;
+      });
+      setDispatchOrder(fullOrder);
+      setDispatchLines(initialQuantities);
+      setShowDispatchModal(true);
+    } catch {
+      setError('Failed to load order details for dispatch.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCreateAndDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchOrder) return;
+    const lines = Object.entries(dispatchLines)
+      .map(([olId, qty]) => ({ orderLineId: Number(olId), qty }))
+      .filter((l) => l.qty > 0);
+    if (lines.length === 0) {
+      setDispatchError('Please specify at least one piece to deliver.');
+      return;
+    }
+    setDispatchSubmitting(true);
+    setDispatchError(null);
+    try {
+      const { delivery } = await api.createDelivery({ orderId: dispatchOrder.id, lines });
+      await api.dispatchDelivery(delivery.id);
+      setShowDispatchModal(false);
+      setDispatchOrder(null);
+      onRefresh();
+    } catch (err: unknown) {
+      setDispatchError(err instanceof Error ? err.message : 'Failed to dispatch delivery');
+    } finally {
+      setDispatchSubmitting(false);
+    }
+  };
+
+
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
-      case 'draft':             return 'bg-slate-100 text-slate-700';
-      case 'confirmed':         return 'bg-blue-100 text-blue-800';
-      case 'partially_delivered': return 'bg-amber-100 text-amber-800';
-      case 'delivered':         return 'bg-emerald-100 text-emerald-800';
-      case 'closed':            return 'bg-slate-800 text-white';
-      case 'cancelled':         return 'bg-red-100 text-red-800 line-through';
-      default:                  return 'bg-slate-100 text-slate-700';
+      case 'draft':             return 'bg-slate-50 text-slate-600 border-slate-200';
+      case 'confirmed':         return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'partially_delivered': return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'delivered':         return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'closed':            return 'bg-slate-100 text-slate-700 border-slate-300';
+      case 'cancelled':         return 'bg-red-50 text-red-600 border-red-200 line-through';
+      default:                  return 'bg-slate-50 text-slate-600 border-slate-200';
     }
   };
 
@@ -173,7 +222,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
               disabled={loadingFilters}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl disabled:opacity-50"
             >
-              {loadingFilters ? 'Filtering…' : '🔍 Apply Filter'}
+              {loadingFilters ? 'Filtering…' : 'Apply Filter'}
             </button>
             <button
               onClick={clearFilters}
@@ -185,7 +234,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
               onClick={handleExport}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl"
             >
-              ⬇ Export CSV
+              Export CSV
             </button>
           </div>
         </div>
@@ -204,16 +253,16 @@ export const OrdersList: React.FC<OrdersListProps> = ({
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Order #</th>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Pieces</th>
-                <th className="py-3 px-4 text-right">Shortage</th>
-                <th className="py-3 px-4 text-right">Total</th>
-                <th className="py-3 px-4 text-center">Actions</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Order #</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Date</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Customer</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Pieces</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Shortage</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Total</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -236,12 +285,12 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                       <td className="py-3 px-4 text-xs text-slate-600">{formatDate(ord.orderDate)}</td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{ord.customerName}</td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${getStatusBadge(ord.status)}`}>
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${getStatusBadge(ord.status)}`}>
                           {ord.status.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-bold text-slate-800">{totalPieces}</td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900">{totalPieces}</td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums">
                         {totalShortage > 0 ? (
                           <span className="text-amber-600 font-bold text-xs">{totalShortage}</span>
                         ) : (
@@ -255,21 +304,11 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                         <div className="flex items-center justify-center gap-1 flex-wrap">
                           {isDeliverable && (
                             <button
-                              onClick={async () => {
-                                setActionLoading(true);
-                                try {
-                                  const { order: fullOrder } = await api.getOrder(ord.id);
-                                  onCreateDelivery(fullOrder);
-                                } catch (err) {
-                                  alert('Failed to load order details for dispatch.');
-                                } finally {
-                                  setActionLoading(false);
-                                }
-                              }}
+                              onClick={() => openDispatchModal(ord)}
                               disabled={actionLoading}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold disabled:opacity-50"
                             >
-                              {actionLoading ? 'Loading...' : 'Dispatch →'}
+                              {actionLoading ? 'Loading...' : 'Dispatch'}
                             </button>
                           )}
                           {invoices.some(i => i.orderId === ord.id && i.status === 'issued') && (
@@ -277,7 +316,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                               onClick={() => handlePrintInvoice(ord.id)}
                               className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold"
                             >
-                              🖨 Print Bill
+                              Print Bill
                             </button>
                           )}
                           {(ord.status === 'draft' || ord.status === 'confirmed') && (
@@ -341,7 +380,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <span className="font-bold text-sm text-slate-600">Commercial Invoice</span>
               <div className="flex gap-2">
-                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">🖨 Print</button>
+                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">Print</button>
                 <button onClick={() => setPrintInvoice(null)} className="px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">Close</button>
               </div>
             </div>
@@ -407,6 +446,46 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                 Thank you for your business • Authorized Signature: _______________________
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Dispatch Modal */}
+      {showDispatchModal && dispatchOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-start border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="font-semibold text-sm text-slate-900">Dispatch for Order {dispatchOrder.orderNo}</h4>
+                <p className="text-xs text-slate-500 mt-0.5">Set quantities to dispatch. Dispatching writes outward stock movements.</p>
+              </div>
+              <button onClick={() => setShowDispatchModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            {dispatchError && <div className="p-3 bg-red-50 text-red-700 rounded-lg text-xs font-medium">{dispatchError}</div>}
+            <form onSubmit={handleCreateAndDispatch} className="space-y-3">
+              {(dispatchOrder.lines ?? []).filter(l => l.qtyOrdered - l.qtyDelivered > 0).map(l => (
+                <div key={l.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div>
+                    <span className="text-xs font-medium text-slate-800">{l.productName} — {l.colour} / {l.size}</span>
+                    <span className="text-[10px] text-slate-500 block">Remaining: {l.qtyOrdered - l.qtyDelivered} pcs</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max={l.qtyOrdered - l.qtyDelivered}
+                    value={dispatchLines[l.id] ?? ""}
+                    onChange={e => setDispatchLines(prev => ({ ...prev, [l.id]: Number(e.target.value) }))}
+                    className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm font-mono text-right"
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setShowDispatchModal(false)} className="px-4 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
+                <button type="submit" disabled={dispatchSubmitting} className="px-5 py-2 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
+                  {dispatchSubmitting ? 'Dispatching…' : 'Confirm Dispatch'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

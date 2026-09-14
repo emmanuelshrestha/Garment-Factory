@@ -48,7 +48,7 @@ This document outlines the steps to deploy the Garment Factory ERP system to a p
 
 4.  **Start Server:**
     ```bash
-    export GARMENT_DATABASE_PATH=/path/to/data/factory.db
+    export GARMENT_DB_PATH=/path/to/data/factory.db
     export GARMENT_WEB_DIST_DIR=/path/to/web/dist
     export GARMENT_PORT=4000
     npm start

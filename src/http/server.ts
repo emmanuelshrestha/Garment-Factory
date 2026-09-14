@@ -14,7 +14,7 @@ import { Router } from './router.ts';
 import { sendError, sendJson, sendText } from './respond.ts';
 import { readOnly } from '../db/sqlite.ts';
 import { parseCookies } from './routes/auth.ts';
-import { getSessionUser } from '../services/auth.ts';
+import { getSessionUser } from '../services/auth.ts'; import { tenantSlugFromHost } from '../domain/tenants.ts'; import { config } from '../config.ts';
 import { getTenantDb } from '../db/tenantManager.ts';
 import { catalogueRoutes } from './routes/catalogue.ts';
 import { customerRoutes } from './routes/customers.ts';
@@ -70,16 +70,20 @@ export function createApiServer(app: AppContext, options: ServerOptions = {}): S
       const pathname = url.pathname;
       const isPublicApi = pathname === '/api/health' || pathname.startsWith('/api/auth/');
 
-      const tenantHeader = req.headers['x-tenant-slug'] ?? req.headers['x-tenant'];
+      const hostHeader = req.headers['host'];
+      const explicitTenant = req.headers['x-tenant-slug'] ?? req.headers['x-tenant'];
       let tenantDb = app.db;
-      if (typeof tenantHeader === 'string' && tenantHeader.trim().length > 0) {
+      let slug = tenantSlugFromHost(hostHeader, config.baseDomain);
+      // An explicit tenant header from our own frontend takes precedence over
+      // the Host name, so the login page can name the factory directly.
+      if (slug === null && typeof explicitTenant === 'string' && explicitTenant.trim().length > 0) {
+        slug = explicitTenant.trim().toLowerCase();
+      }
+      if (slug !== null && slug.length > 0) {
         try {
-          tenantDb = getTenantDb(tenantHeader.trim());
+          tenantDb = getTenantDb(slug);
         } catch {
-          sendJson(res, 404, {
-            error: 'tenant_not_found',
-            message: `Tenant '${tenantHeader.trim()}' was not found or is inactive.`,
-          });
+          sendJson(res, 404, { error: 'tenant_not_found', message: 'Factory not found.' });
           return;
         }
       }

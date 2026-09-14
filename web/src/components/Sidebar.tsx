@@ -1,6 +1,20 @@
 import React from 'react';
+import {
+  LayoutDashboard,
+  PackageSearch,
+  Grid3X3,
+  Scissors,
+  ShoppingBag,
+  Truck,
+  FileText,
+  CreditCard,
+  Receipt,
+  Users,
+  PanelLeftClose,
+  PanelLeft
+} from 'lucide-react';
 
-export type TabKey = 'dashboard' | 'catalogue' | 'inventory' | 'orders' | 'deliveries' | 'invoices' | 'payments' | 'ledger' | 'cutting' | 'earnings';
+export type TabKey = 'dashboard' | 'catalogue' | 'inventory' | 'orders' | 'deliveries' | 'invoices' | 'payments' | 'ledger' | 'cutting' | 'earnings' | 'returns';
 
 interface SidebarProps {
   activeTab: TabKey;
@@ -12,6 +26,35 @@ interface SidebarProps {
   pendingChequesCount?: number;
 }
 
+interface TabConfig {
+  key: TabKey;
+  label: string;
+  icon: React.ReactNode;
+  badge?: number;
+}
+
+const iconProps = {
+  size: 18,
+  strokeWidth: 1.75,
+};
+
+const getIcon = (key: TabKey): React.ReactNode => {
+  const icons: Record<TabKey, React.ReactNode> = {
+    dashboard: <LayoutDashboard {...iconProps} />,
+    catalogue: <PackageSearch {...iconProps} />,
+    inventory: <Grid3X3 {...iconProps} />,
+    cutting: <Scissors {...iconProps} />,
+    orders: <ShoppingBag {...iconProps} />,
+    deliveries: <Truck {...iconProps} />,
+    invoices: <FileText {...iconProps} />,
+    payments: <CreditCard {...iconProps} />,
+    returns: <Receipt {...iconProps} />,
+    ledger: <Receipt {...iconProps} />,
+    earnings: <Users {...iconProps} />,
+  };
+  return icons[key];
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
@@ -21,71 +64,81 @@ export const Sidebar: React.FC<SidebarProps> = ({
   shortageCount = 0,
   pendingChequesCount = 0,
 }) => {
-  const tabs: { key: TabKey; label: string; icon: string; badge?: number; badgeColor?: string }[] = [
-    { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { key: 'catalogue', label: 'Catalogue', icon: '🏷️' },
-    { key: 'inventory', label: 'Stock Matrix', icon: '📦', badge: redCount, badgeColor: 'bg-red-500 text-white' },
-    { key: 'cutting', label: 'Cutting Stock', icon: '✂️' },
-    { key: 'orders', label: 'Orders', icon: '📋', badge: shortageCount, badgeColor: 'bg-amber-500 text-white' },
-    { key: 'deliveries', label: 'Deliveries', icon: '🚚' },
-    { key: 'invoices', label: 'Invoices & Billing', icon: '📄' },
-    { key: 'payments', label: 'Payments & Cheques', icon: '💳', badge: pendingChequesCount, badgeColor: 'bg-blue-500 text-white' },
-    { key: 'ledger', label: 'Expenses', icon: '📈' },
-    { key: 'earnings', label: 'Employee Earnings', icon: '👔' },
+  const tabs: TabConfig[] = [
+    { key: 'dashboard', label: 'Dashboard', icon: getIcon('dashboard') },
+    { key: 'catalogue', label: 'Catalogue', icon: getIcon('catalogue') },
+    { key: 'inventory', label: 'Stock Matrix', icon: getIcon('inventory'), badge: redCount },
+    { key: 'cutting', label: 'Cutting Stock', icon: getIcon('cutting') },
+    { key: 'orders', label: 'Orders', icon: getIcon('orders'), badge: shortageCount },
+    { key: 'deliveries', label: 'Deliveries', icon: getIcon('deliveries') },
+    { key: 'invoices', label: 'Invoices & Billing', icon: getIcon('invoices') },
+    { key: 'payments', label: 'Payments & Cheques', icon: getIcon('payments'), badge: pendingChequesCount },
+    { key: 'returns', label: 'Returns', icon: getIcon('returns') },
+    { key: 'ledger', label: 'Expenses', icon: getIcon('ledger') },
+    { key: 'earnings', label: 'Employee Earnings', icon: getIcon('earnings') },
   ];
 
+  const badgeClass = (key: TabKey): string => {
+    const classes: Record<TabKey, string> = {
+      dashboard: '',
+      catalogue: '',
+      inventory: 'bg-red-50 text-red-600 border-red-200',
+      orders: 'bg-amber-50 text-amber-600 border-amber-200',
+      deliveries: '',
+      invoices: '',
+      payments: 'bg-blue-50 text-blue-600 border-blue-200',
+      ledger: '',
+      cutting: '',
+      earnings: '',
+      returns: '',
+    };
+    return classes[key] || '';
+  };
+
   return (
-    <aside className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-white border-r border-slate-800 min-h-screen flex flex-col shrink-0 sticky top-0 z-30 shadow-lg transition-all`}>
+    <aside className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-slate-200 min-h-screen flex flex-col shrink-0 sticky top-0 z-30 transition-all duration-200`}>
       {/* Brand / Logo */}
       <div 
-        className="flex items-center justify-between px-6 h-20 border-b border-slate-800 cursor-pointer hover:bg-slate-800/50 transition"
+        className={`flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between px-4'} h-16 border-b border-slate-200 cursor-pointer hover:bg-slate-50 transition`}
         onClick={() => onSelectTab('dashboard')}
       >
-        <div className="flex items-center space-x-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-blue-600/30 shrink-0">
-            G
-          </div>
-          {!isCollapsed && (
-            <div>
-              <span className="font-bold text-sm tracking-tight block whitespace-nowrap">Garment Factory OS</span>
-              <span className="text-xs text-slate-400 block whitespace-nowrap">Operations & Commercial</span>
-            </div>
-          )}
-        </div>
+        {!isCollapsed && (
+          <span className="font-bold text-base tracking-tight whitespace-nowrap text-slate-900">GarmentOS</span>
+        )}
         <button 
           onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }} 
-          className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition flex items-center justify-center"
           title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
-          {isCollapsed ? '➡️' : '⬅️'}
+          {isCollapsed ? <PanelLeft size={18} strokeWidth={1.75} /> : <PanelLeftClose size={18} strokeWidth={1.75} />}
         </button>
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto scrollbar-hide">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
+          const hasBadge = tab.badge !== undefined && tab.badge > 0;
+          
           return (
             <button
               key={tab.key}
               onClick={() => onSelectTab(tab.key)}
               title={isCollapsed ? tab.label : undefined}
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} px-4 py-3 rounded-xl text-xs font-semibold transition-all ${
+              className={`w-full flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between px-3'} py-2.5 rounded-lg text-xs font-medium transition-all ${
                 isActive
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
-              <div className="flex items-center space-x-3">
-                <span className="text-base">{tab.icon}</span>
+              <div className="flex items-center gap-3">
+                <span className={`${isActive ? 'text-blue-600' : 'text-slate-500'}`}>
+                  {tab.icon}
+                </span>
                 {!isCollapsed && <span>{tab.label}</span>}
               </div>
-              {!isCollapsed && tab.badge !== undefined && tab.badge > 0 && (
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    tab.badgeColor ?? 'bg-slate-700 text-white'
-                  }`}
-                >
+              {!isCollapsed && hasBadge && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${badgeClass(tab.key)}`}>
                   {tab.badge}
                 </span>
               )}
@@ -96,8 +149,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer / System Info */}
       {!isCollapsed && (
-        <div className="p-4 border-t border-slate-800 text-[11px] text-slate-400 text-center">
-          <p className="font-medium text-slate-300">Node.js 22 + React 19</p>
+        <div className="p-4 border-t border-slate-200 text-[11px] text-slate-400 text-center">
+          <p className="font-medium text-slate-500">Node.js 22 + React 19</p>
           <p className="mt-0.5">SQLite STRICT Ledger</p>
         </div>
       )}

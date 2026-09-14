@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { RefreshCw } from 'lucide-react';
 import {
   api,
   type Product,
@@ -13,6 +14,7 @@ import {
   type Purchase,
   type DashboardSummary,
   type CuttingStockSummary,
+  type Employee,
 } from './api.ts';
 import { Sidebar, type TabKey } from './components/Sidebar.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
@@ -28,9 +30,44 @@ import { LedgerView } from './components/LedgerView.tsx';
 import { EmployeesView } from './components/EmployeesView.tsx';
 import { MonthlyEarningsView } from './components/MonthlyEarningsView.tsx';
 import { EmployeeYearlyView } from './components/EmployeeYearlyView.tsx';
-import { type Employee } from './api.ts';
+import { ReturnsView } from './components/ReturnsView.tsx';
+import { LoginPage } from './components/LoginPage.tsx';
+import { LogoutButton } from './components/LogoutButton.tsx';
 
+// Auth hook
+function useAuth() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true';
+  });
+  const [user, setUser] = useState(() => {
+    try {
+      const userData = localStorage.getItem('user');
+      return userData ? JSON.parse(userData) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const login = (userData: { id: number; username: string; fullName: string }) => {
+    localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('user', JSON.stringify(userData));
+    setIsAuthenticated(true);
+    setUser(userData);
+  };
+
+  const logout = () => {
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('user');
+    setIsAuthenticated(false);
+    setUser(null);
+  };
+
+  return { isAuthenticated, user, login, logout };
+}
+
+// Main App
 export function App() {
+  const { isAuthenticated, user, login, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
   const [ordersSubTab, setOrdersSubTab] = useState<'create' | 'list'>('create');
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<Order | null>(null);
@@ -59,22 +96,8 @@ export function App() {
   const loadAllData = useCallback(async () => {
     try {
       setError(null);
-      const [
-        dashRes,
-        prodRes,
-        varRes,
-        stockRes,
-        cuttingRes,
-        custRes,
-        ordRes,
-        delRes,
-        invRes,
-        payRes,
-        expRes,
-        purRes,
-        empRes,
-      ] = await Promise.all([
-        api.getDashboard().catch(() => ({ dashboard: null as any })),
+      const results = await Promise.all([
+        api.getDashboard().catch(() => ({ dashboard: null })),
         api.getProducts().catch(() => ({ products: [] })),
         api.getVariants().catch(() => ({ variants: [] })),
         api.getStockSummaries({ activeOnly: true }).catch(() => ({ summaries: [] })),
@@ -89,19 +112,19 @@ export function App() {
         api.getEmployees().catch(() => ({ employees: [] })),
       ]);
 
-      if (dashRes.dashboard) setDashboard(dashRes.dashboard);
-      setProducts(prodRes.products);
-      setVariants(varRes.variants);
-      setStock(stockRes.summaries);
-      setCuttingStock(cuttingRes.summaries);
-      setCustomers(custRes.customers);
-      setOrders(ordRes.orders);
-      setDeliveries(delRes.deliveries);
-      setInvoices(invRes.invoices);
-      setPayments(payRes.payments);
-      setExpenses(expRes.expenses);
-      setPurchases(purRes.purchases);
-      setEmployees(empRes.employees);
+      if (results[0].dashboard) setDashboard(results[0].dashboard);
+      setProducts(results[1].products);
+      setVariants(results[2].variants);
+      setStock(results[3].summaries);
+      setCuttingStock(results[4].summaries);
+      setCustomers(results[5].customers);
+      setOrders(results[6].orders);
+      setDeliveries(results[7].deliveries);
+      setInvoices(results[8].invoices);
+      setPayments(results[9].payments);
+      setExpenses(results[10].expenses);
+      setPurchases(results[11].purchases);
+      setEmployees(results[12].employees);
     } catch (err: any) {
       console.error('Data refresh failure:', err);
       setError(err.message || 'Failed to load factory state');
@@ -119,9 +142,47 @@ export function App() {
     setActiveTab('deliveries');
   };
 
+  const handleRefresh = async () => {
+    try {
+      const { dashboard } = await api.getDashboard();
+      setDashboard(dashboard);
+    } catch (err) {
+      console.error('Refresh error:', err);
+    }
+  };
+
+  // Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={login} />;
+  }
+
+  // Render loading/error states
+  if (loading && !dashboard) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-blue-600" />
+          <p className="mt-2 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-white p-8 rounded-lg shadow-md text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button onClick={handleRefresh} className="px-4 py-2 bg-blue-600 text-white rounded">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-row font-sans text-slate-900 selection:bg-blue-600 selection:text-white">
-      {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
         isCollapsed={isSidebarCollapsed}
@@ -130,12 +191,11 @@ export function App() {
           setActiveTab(tab);
           if (tab !== 'deliveries') setSelectedOrderForDispatch(null);
         }}
-        redCount={dashboard?.inventory.redCount}
-        shortageCount={dashboard?.orders.shortageVariantsCount}
-        pendingChequesCount={dashboard?.cheques.pendingCount}
+        redCount={dashboard?.inventory?.redCount ?? 0}
+        shortageCount={dashboard?.orders?.shortageVariantsCount ?? 0}
+        pendingChequesCount={dashboard?.cheques?.pendingCount ?? 0}
       />
 
-      {/* Main Body */}
       <main className="flex-1 overflow-x-hidden overflow-y-auto flex flex-col justify-between">
         <div className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1">
           {error && (
@@ -147,7 +207,32 @@ export function App() {
             </div>
           )}
 
-          {/* Tab 1: Dashboard */}
+          <header className="mb-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-slate-800">
+                {activeTab === 'dashboard' && 'Operations Briefing'}
+                {activeTab === 'catalogue' && 'Product Catalogue'}
+                {activeTab === 'inventory' && 'Finished Stock'}
+                {activeTab === 'cutting' && 'Cutting Stock'}
+                {activeTab === 'orders' && 'Orders'}
+                {activeTab === 'deliveries' && 'Deliveries'}
+                {activeTab === 'invoices' && 'Invoices & Billing'}
+                {activeTab === 'payments' && 'Payments'}
+                {activeTab === 'ledger' && 'Expenses & Purchases'}
+                {activeTab === 'earnings' && 'Employee Earnings'}
+                {activeTab === 'returns' && 'Returns'}
+              </h1>
+              <div className="flex items-center gap-4">
+                {user && (
+                  <span className="text-sm text-slate-600">
+                    Welcome, <span className="font-medium">{user.fullName || user.username}</span>
+                  </span>
+                )}
+                <LogoutButton onLogout={logout} />
+              </div>
+            </div>
+          </header>
+
           {activeTab === 'dashboard' && (
             <DashboardView
               data={dashboard}
@@ -156,16 +241,12 @@ export function App() {
                 setActiveTab(t);
                 if (t === 'orders') setOrdersSubTab('create');
               }}
-              onRefresh={loadAllData}
+              onRefresh={handleRefresh}
             />
           )}
 
-          {/* Tab 2: Catalogue */}
-          {activeTab === 'catalogue' && (
-            <CatalogueView />
-          )}
+          {activeTab === 'catalogue' && <CatalogueView />}
 
-          {/* Tab 3: Stock Matrix */}
           {activeTab === 'inventory' && (
             <InventoryMatrix
               products={products}
@@ -174,7 +255,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 3: Cutting Stock */}
           {activeTab === 'cutting' && (
             <CuttingStockMatrix
               products={products}
@@ -183,7 +263,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 3: Orders */}
           {activeTab === 'orders' && (
             <div className="space-y-6">
               <div className="flex space-x-2 border-b border-slate-200 pb-3">
@@ -235,7 +314,6 @@ export function App() {
             </div>
           )}
 
-          {/* Tab 4: Deliveries */}
           {activeTab === 'deliveries' && (
             <DeliveriesView
               deliveries={deliveries}
@@ -247,7 +325,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 5: Invoices & Billing */}
           {activeTab === 'invoices' && (
             <InvoicesView
               invoices={invoices}
@@ -256,7 +333,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 6: Payments */}
           {activeTab === 'payments' && (
             <PaymentsView
               customers={customers}
@@ -266,7 +342,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 7: Expenses & Purchases */}
           {activeTab === 'ledger' && (
             <LedgerView
               expenses={expenses}
@@ -275,7 +350,6 @@ export function App() {
             />
           )}
 
-          {/* Tab 8: Employee Earnings */}
           {activeTab === 'earnings' && (
             <div className="space-y-6">
               <div className="flex space-x-2 border-b border-slate-200 pb-3">
@@ -290,7 +364,7 @@ export function App() {
                       : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
                   }`}
                 >
-                  📅 Monthly Earnings & Dues
+                  Monthly Earnings & Dues
                 </button>
                 <button
                   onClick={() => {
@@ -303,7 +377,7 @@ export function App() {
                       : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
                   }`}
                 >
-                  <span>👥 Employee Directory</span>
+                  <span>Employee Directory</span>
                   <span className="bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded-full text-[10px]">
                     {employees.length}
                   </span>
@@ -345,9 +419,18 @@ export function App() {
               )}
             </div>
           )}
+
+          {activeTab === 'returns' && (
+            <ReturnsView
+              deliveries={deliveries}
+              customers={customers}
+              variants={variants}
+              invoices={invoices}
+              onRefresh={loadAllData}
+            />
+          )}
         </div>
 
-        {/* Footer */}
         <footer className="w-full bg-slate-100 border-t border-slate-200 py-6 text-center text-xs text-slate-400 no-print mt-auto">
           Garment Factory Management System • Node.js 22 + React 19 + SQLite STRICT
         </footer>

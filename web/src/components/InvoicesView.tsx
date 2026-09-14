@@ -15,7 +15,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<number | null>(null);
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState<string>('');
-  const [discountMinor, setDiscountMinor] = useState<number>(0);
+  const [discountRupees, setDiscountRupees] = useState<string>('');
+  // Discount entered in rupees; converted to minor units (paisa) on submit.
+  const discountMinor = Math.round((parseFloat(discountRupees) || 0) * 100);
   const [discountReason, setDiscountReason] = useState<string>('');
   const [showVoidModal, setShowVoidModal] = useState<boolean>(false);
   const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
@@ -80,9 +82,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
     if (discountMinor > 0 && !discountReason.trim()) { setError('A reason is required whenever a discount is applied.'); return; }
     setSubmitting(true); setError(null);
     try {
-      const { invoice } = await api.createInvoiceForDelivery(selectedDeliveryId, { invoiceDate, dueDate: dueDate || undefined, discountMinor: discountMinor > 0 ? discountMinor : undefined, discountReason: discountReason.trim() || undefined });
-      await api.issueInvoice(invoice.id);
-      setShowBillingModal(false); setSelectedDeliveryId(null); setDiscountMinor(0); setDiscountReason('');
+      await api.createInvoiceForDelivery(selectedDeliveryId, { invoiceDate, dueDate: dueDate || undefined, discountMinor: discountMinor > 0 ? discountMinor : undefined, discountReason: discountReason.trim() || undefined });
+      setShowBillingModal(false); setSelectedDeliveryId(null); setDiscountRupees(''); setDiscountReason('');
       onRefresh(); fetchBillables();
     } catch (err: any) { setError(err.message || 'Failed to create invoice'); }
     finally { setSubmitting(false); }
@@ -106,7 +107,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
   };
 
   const statusBadge = (s: Invoice['status']) =>
-    s === 'issued' ? 'bg-emerald-100 text-emerald-800' : s === 'void' ? 'bg-red-100 text-red-700 line-through' : 'bg-slate-100 text-slate-600';
+    s === 'issued' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : s === 'void' ? 'bg-red-50 text-red-600 border-red-200 line-through' : 'bg-slate-50 text-slate-600 border-slate-200';
 
   return (
     <div className="space-y-4">
@@ -150,9 +151,9 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
             <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:border-blue-600 focus:outline-none" />
           </div>
           <div className="flex gap-2">
-            <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">🔍 Apply</button>
+            <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Apply</button>
             <button onClick={clearFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">✕ Clear</button>
-            <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">⬇ Export CSV</button>
+            <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">Export CSV</button>
           </div>
         </div>
       </div>
@@ -165,14 +166,14 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Invoice #</th>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Total</th>
-                <th className="py-3 px-4 text-center">Actions</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Invoice #</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Date</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Customer</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Total</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -185,14 +186,14 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
                     <td className="py-3 px-4 text-xs text-slate-600">{formatDate(inv.invoiceDate)}</td>
                     <td className="py-3 px-4 font-semibold text-slate-800">{inv.customerName}</td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${statusBadge(inv.status)}`}>{inv.status.toUpperCase()}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusBadge(inv.status)}`}>{inv.status.toUpperCase()}</span>
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold">{formatMoney(inv.totalMinor, inv.currency)}</td>
+                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900">{formatMoney(inv.totalMinor, inv.currency)}</td>
                     <td className="py-3 px-4 text-center">
                       <div className="flex justify-center gap-1 flex-wrap">
                         {inv.status === 'issued' && (
                           <>
-                            <button onClick={() => handlePrint(inv)} className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">🖨 Print</button>
+                            <button onClick={() => handlePrint(inv)} className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">Print</button>
                             <button onClick={() => { setVoidInvoiceId(inv.id); setShowVoidModal(true); setError(null); }} className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-semibold">Void</button>
                           </>
                         )}
@@ -243,8 +244,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Discount (Paisa)</label>
-                    <input type="number" min="0" value={discountMinor} onChange={e => setDiscountMinor(Number(e.target.value))} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" />
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Discount (Rupees)</label>
+                    <input type="number" step="0.01" min="0" value={discountRupees} onChange={e => setDiscountRupees(e.target.value)} placeholder="e.g. 500" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Discount Reason</label>
@@ -278,7 +279,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
             <form onSubmit={handleVoidInvoice} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Voiding (Required)</label>
-                <textarea value={voidReason} onChange={e => setVoidReason(e.target.value)} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" required />
+                <textarea value={voidReason} onChange={e => setVoidReason(e.target.value)} rows={3} placeholder="Why is this invoice being voided?" className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" required />
               </div>
               <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button type="button" onClick={() => setShowVoidModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
@@ -298,7 +299,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({ invoices, customers,
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <span className="font-bold text-sm text-slate-600">Commercial Invoice</span>
               <div className="flex gap-2">
-                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">🖨 Print</button>
+                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">Print</button>
                 <button onClick={() => setPrintInvoice(null)} className="px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">Close</button>
               </div>
             </div>

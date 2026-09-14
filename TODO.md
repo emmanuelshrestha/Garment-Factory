@@ -9,7 +9,7 @@
 
 All Slice 1 functionality is implemented, tested, and verified.
 
-- ✅ 300/300 tests passing
+312/312 tests passing
 - ✅ Backend: Zero dependencies, Node 22 + SQLite
 - ✅ Frontend: React 19 + Vite + Tailwind + TanStack Query
 - ✅ Full sales workflow: Orders → Deliveries → Invoices → Payments
@@ -88,6 +88,7 @@ Read these files for complete understanding:
 - Deliveries (draft → dispatch, partial fulfillment)
 - Invoices (immutable, void-and-reissue)
 - Payments (cash, bank, cheque lifecycle)
+- Returns (goods back into finished stock, void-and-reissue)
 - Multi-currency (NPR, INR, USD) with FX rate capture
 
 ### Inventory

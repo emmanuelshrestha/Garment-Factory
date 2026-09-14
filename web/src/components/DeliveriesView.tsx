@@ -136,9 +136,9 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
             <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:border-blue-600 focus:outline-none" />
           </div>
           <div className="flex gap-2">
-            <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">🔍 Apply Filter</button>
+            <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Apply Filter</button>
             <button onClick={clearFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">✕ Clear</button>
-            <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">⬇ Export CSV</button>
+            <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">Export CSV</button>
           </div>
         </div>
       </div>
@@ -151,15 +151,15 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Delivery #</th>
-                <th className="py-3 px-4">Dispatched</th>
-                <th className="py-3 px-4">Order #</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4 text-center">Status</th>
-                <th className="py-3 px-4 text-right">Total Qty</th>
-                <th className="py-3 px-4 text-center">Actions</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Delivery #</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Dispatched</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Order #</th>
+                <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Customer</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Total Qty</th>
+                <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -173,14 +173,14 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
                     <td className="py-3 px-4 font-mono text-xs text-slate-700">{d.orderNo}</td>
                     <td className="py-3 px-4 font-semibold text-slate-800">{d.customerName}</td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${d.status === 'dispatched' ? 'bg-emerald-100 text-emerald-800' : d.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${d.status === 'dispatched' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : d.status === 'cancelled' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                         {d.status}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right font-bold">{d.totalQty} pcs</td>
                     <td className="py-3 px-4 text-center">
                       {d.status === 'dispatched' && (
-                        <button onClick={() => setPrintDelivery(d)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">🖨 Print Slip</button>
+                        <button onClick={() => setPrintDelivery(d)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">Print Slip</button>
                       )}
                     </td>
                   </tr>
@@ -212,7 +212,7 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
                   </div>
                   <input
                     type="number" min="0" max={l.qtyOrdered - l.qtyDelivered}
-                    value={dispatchLines[l.id] ?? 0}
+                    value={dispatchLines[l.id] ?? ""}
                     onChange={e => setDispatchLines(prev => ({ ...prev, [l.id]: Number(e.target.value) }))}
                     className="w-20 px-2 py-1 border border-slate-300 rounded-lg text-sm font-bold text-right"
                   />
@@ -236,7 +236,7 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <span className="font-bold text-sm text-slate-600">Packing / Delivery Slip</span>
               <div className="flex gap-2">
-                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">🖨 Print</button>
+                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">Print</button>
                 <button onClick={() => setPrintDelivery(null)} className="px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">Close</button>
               </div>
             </div>

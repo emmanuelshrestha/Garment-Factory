@@ -2,9 +2,9 @@
  * Stock routes.
  *
  * There is no endpoint that sets a stock quantity. Stock changes only through
- * an opening balance, an adjustment with a reason, or a delivery — every one of
- * them an append-only ledger entry. That is deliberate: a PUT that overwrote a
- * quantity would destroy the audit trail the business depends on.
+ * an opening balance, an adjustment with a reason, a delivery, or a return —
+ * every one of them an append-only ledger entry. That is deliberate: a PUT that
+ * overwrote a quantity would destroy the audit trail the business depends on.
  */
 
 import { readOnly, transaction } from '../../db/sqlite.ts';
@@ -16,6 +16,7 @@ import {
   listMovements,
   listStockSummaries,
   recordOpeningBalance,
+  recordReturn,
   type AdjustmentLineInput,
   type AdjustmentReasonCode,
 } from '../../services/stock.ts';
@@ -105,6 +106,27 @@ export function stockRoutes(app: AppContext): Route[] {
           }),
         );
         sendJson(res, 201, { adjustment });
+      },
+    },
+    {
+      // Record a goods return from a customer. Returns go straight into
+      // sellable finished stock.
+      method: 'POST',
+      pattern: '/api/stock/returns',
+      handler: async ({ req, res }) => {
+        const body = await readJsonBody(req);
+        const result = transaction(app.db, (tx) =>
+          recordReturn(tx, {
+            deliveryId: requireInt(body.deliveryId, 'deliveryId'),
+            deliveryLineId: requireInt(body.deliveryLineId, 'deliveryLineId'),
+            variantId: requireInt(body.variantId, 'variantId'),
+            qty: requireInt(body.qty, 'qty'),
+            returnDate: requireString(body.returnDate, 'returnDate'),
+            reason: requireString(body.reason, 'reason'),
+            userId: app.currentUserId,
+          }),
+        );
+        sendJson(res, 201, { movementId: result });
       },
     },
     {

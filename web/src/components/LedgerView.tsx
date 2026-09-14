@@ -164,9 +164,9 @@ export const LedgerView: React.FC<LedgerViewProps> = ({ expenses, purchases, onR
                 <input type="date" value={expFilterTo} onChange={e => setExpFilterTo(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:border-blue-600 focus:outline-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={applyExpenseFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">🔍 Apply</button>
-                <button onClick={clearExpenseFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">✕ Clear</button>
-                <button onClick={handleExpenseExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">⬇ Export CSV</button>
+                <button onClick={applyExpenseFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Apply</button>
+                <button onClick={clearExpenseFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Clear</button>
+                <button onClick={handleExpenseExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">Export CSV</button>
               </div>
             </div>
           </div>
@@ -178,14 +178,14 @@ export const LedgerView: React.FC<LedgerViewProps> = ({ expenses, purchases, onR
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Payee</th>
-                    <th className="py-3 px-4">Method</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4">Note</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Date</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Category</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Payee</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Method</th>
+                    <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Amount</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Note</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -227,9 +227,9 @@ export const LedgerView: React.FC<LedgerViewProps> = ({ expenses, purchases, onR
                 <input type="date" value={purFilterTo} onChange={e => setPurFilterTo(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:border-blue-600 focus:outline-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={applyPurchaseFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">🔍 Apply</button>
-                <button onClick={clearPurchaseFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">✕ Clear</button>
-                <button onClick={handlePurchaseExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">⬇ Export CSV</button>
+                <button onClick={applyPurchaseFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Apply</button>
+                <button onClick={clearPurchaseFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Clear</button>
+                <button onClick={handlePurchaseExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">Export CSV</button>
               </div>
             </div>
           </div>
@@ -241,13 +241,13 @@ export const LedgerView: React.FC<LedgerViewProps> = ({ expenses, purchases, onR
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Supplier</th>
-                    <th className="py-3 px-4">Description</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4">Note</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Date</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Supplier</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Description</th>
+                    <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Amount</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Note</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

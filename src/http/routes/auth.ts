@@ -4,7 +4,8 @@
 
 import { readOnly, transaction } from '../../db/sqlite.ts';
 import { loginUser, logoutUser, getSessionUser } from '../../services/auth.ts';
-import type { AppContext } from '../context.ts';
+import type { User } from '../../domain/user.ts';
+import { config } from '../../config.ts';
 import type { Route } from '../router.ts';
 import { readJsonBody, requireString, sendJson } from '../respond.ts';
 
@@ -37,7 +38,7 @@ export function authRoutes(app: AppContext): Route[] {
 
         res.setHeader(
           'Set-Cookie',
-          `garment_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${12 * 3600}`
+          `garment_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${12 * 3600}${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
         );
         sendJson(res, 200, { user });
       },
@@ -55,7 +56,7 @@ export function authRoutes(app: AppContext): Route[] {
         }
         res.setHeader(
           'Set-Cookie',
-          'garment_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
+          `garment_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
         );
         sendJson(res, 200, { ok: true });
       },

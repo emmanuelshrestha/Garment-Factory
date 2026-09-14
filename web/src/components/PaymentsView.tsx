@@ -104,7 +104,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
   const handleApplyPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPayment) return;
-    const allocList = Object.entries(allocations).map(([invId, amt]) => ({ invoiceId: Number(invId), amountMinor: amt })).filter(a => a.amountMinor > 0);
+    const allocList = Object.entries(allocations)
+      .map(([invId, amt]) => ({ invoiceId: Number(invId), amountMinor: Math.round(amt * 100) }))
+      .filter(a => a.amountMinor > 0);
     if (allocList.length === 0) { setError('Please allocate an amount to at least one invoice.'); return; }
     setSubmitting(true); setError(null);
     try { await api.applyPayment(selectedPayment.id, allocList); setShowApplyModal(false); setSelectedPayment(null); onRefresh(); }
@@ -180,9 +182,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
                 <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm focus:border-blue-600 focus:outline-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">🔍 Apply</button>
-                <button onClick={clearFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">✕ Clear</button>
-                <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">⬇ Export CSV</button>
+                <button onClick={applyFilters} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl">Apply</button>
+                <button onClick={clearFilters} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl">Clear</button>
+                <button onClick={handleExport} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl">Export CSV</button>
               </div>
             </div>
           </div>
@@ -194,16 +196,16 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-4">Receipt #</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Customer</th>
-                    <th className="py-3 px-4">Method</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4 text-right">Unallocated</th>
-                    <th className="py-3 px-4 text-center">Actions</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Receipt #</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Date</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Customer</th>
+                    <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Method</th>
+                    <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                    <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Amount</th>
+                    <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Unallocated</th>
+                    <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -217,15 +219,15 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
                         <td className="py-3 px-4 font-semibold text-slate-800">{p.customerName}</td>
                         <td className="py-3 px-4 capitalize text-xs">{p.method.replace('_', ' ')}{p.chequeNo && <span className="text-slate-400 font-mono text-[10px] block">#{p.chequeNo}</span>}</td>
                         <td className="py-3 px-4 text-center">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${p.status === 'cleared' ? 'bg-emerald-100 text-emerald-800' : p.status === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800 line-through'}`}>{p.status.toUpperCase()}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${p.status === 'cleared' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : p.status === 'pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-600 border-red-200 line-through'}`}>{p.status.toUpperCase()}</span>
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-extrabold">{formatMoney(p.amountMinor, p.currency)}</td>
+                        <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900">{formatMoney(p.amountMinor, p.currency)}</td>
                         <td className="py-3 px-4 text-right font-mono text-xs text-slate-500">
                           {p.unappliedMinor > 0 ? <span className="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">{formatMoney(p.unappliedMinor, p.currency)}</span> : '—'}
                         </td>
                         <td className="py-3 px-4 text-center">
                           {p.unappliedMinor > 0 && p.status === 'cleared' && (
-                            <button onClick={() => { setSelectedPayment(p); setAllocations({}); setError(null); setShowApplyModal(true); }} className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">Apply to Bills →</button>
+                            <button onClick={() => { setSelectedPayment(p); setAllocations({}); setError(null); setShowApplyModal(true); }} className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">Apply to Bills</button>
                           )}
                         </td>
                       </tr>
@@ -247,14 +249,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
           </div>
           <div className="p-4 overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 uppercase text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4">Receipt #</th>
-                  <th className="py-3 px-4">Cheque #</th>
-                  <th className="py-3 px-4">Cheque Date</th>
-                  <th className="py-3 px-4">Customer</th>
-                  <th className="py-3 px-4 text-right">Amount</th>
-                  <th className="py-3 px-4 text-center">Actions</th>
+                  <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Receipt #</th>
+                  <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Cheque #</th>
+                  <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Cheque Date</th>
+                  <th className="py-2.5 px-4 text-[11px] uppercase tracking-wider text-slate-500 font-medium">Customer</th>
+                  <th className="py-2.5 px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 font-medium">Amount</th>
+                  <th className="py-2.5 px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -267,10 +269,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
                       <td className="py-3 px-4 font-mono font-bold text-xs text-blue-900">{c.chequeNo}</td>
                       <td className="py-3 px-4 text-xs text-slate-600">{formatDate(c.chequeDate || '')}</td>
                       <td className="py-3 px-4 font-semibold text-slate-800">{c.customerName}</td>
-                      <td className="py-3 px-4 text-right font-mono font-black">{formatMoney(c.amountMinor, c.currency)}</td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-slate-900">{formatMoney(c.amountMinor, c.currency)}</td>
                       <td className="py-3 px-4 text-center space-x-2">
-                        <button onClick={() => handleClearCheque(c.id)} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">✓ Cleared</button>
-                        <button onClick={() => { setBouncePaymentId(c.id); setShowBounceModal(true); setError(null); }} className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-semibold">⚠ Bounced</button>
+                        <button onClick={() => handleClearCheque(c.id)} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">Cleared</button>
+                        <button onClick={() => { setBouncePaymentId(c.id); setShowBounceModal(true); setError(null); }} className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-semibold">Bounced</button>
                       </td>
                     </tr>
                   ))
@@ -399,14 +401,14 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
             <form onSubmit={handleApplyPayment} className="space-y-4">
               <div className="border border-slate-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-500 uppercase"><tr><th className="p-2.5">Invoice #</th><th className="p-2.5">Date</th><th className="p-2.5 text-right">Total</th><th className="p-2.5 text-right">Allocate (Paisa)</th></tr></thead>
+                  <thead className="bg-slate-50 text-slate-500 uppercase"><tr><th className="p-2.5">Invoice #</th><th className="p-2.5">Date</th><th className="p-2.5 text-right">Total</th><th className="p-2.5 text-right">Allocate (Rupees)</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {invoices.filter(i => i.customerId === selectedPayment.customerId && i.status === 'issued' && i.currency === selectedPayment.currency).map(inv => (
                       <tr key={inv.id}>
                         <td className="p-2.5 font-mono font-bold text-blue-900">{inv.invoiceNo}</td>
                         <td className="p-2.5 text-slate-500">{formatDate(inv.invoiceDate)}</td>
                         <td className="p-2.5 text-right font-mono">{formatMoney(inv.totalMinor, inv.currency)}</td>
-                        <td className="p-2.5 text-right"><input type="number" min="0" max={inv.totalMinor} value={allocations[inv.id] ?? 0} onChange={e => setAllocations(prev => ({ ...prev, [inv.id]: parseInt(e.target.value, 10) || 0 }))} className="w-24 px-2 py-1 text-right font-mono font-bold border border-slate-300 rounded-lg" /></td>
+                        <td className="p-2.5 text-right"><input type="number" step="0.01" min="0" max={inv.totalMinor / 100} value={allocations[inv.id] ?? ""} placeholder="e.g. 5000" onChange={e => setAllocations(prev => ({ ...prev, [inv.id]: Number(e.target.value) }))} className="w-24 px-2 py-1 text-right font-mono font-bold border border-slate-300 rounded-lg" /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -433,7 +435,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ customers, payments,
             <form onSubmit={handleBounceCheque} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Bounce (Required)</label>
-                <textarea value={bounceReason} onChange={e => setBounceReason(e.target.value)} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" required />
+                <textarea value={bounceReason} onChange={e => setBounceReason(e.target.value)} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs" placeholder="Reason for bounce" required />
               </div>
               <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button type="button" onClick={() => setShowBounceModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>

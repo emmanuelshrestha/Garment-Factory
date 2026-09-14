@@ -13,10 +13,10 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { config } from '../src/config.ts';
 import { closeDatabase, openDatabase, transaction, type Tx } from '../src/db/sqlite.ts';
 import { migrate } from '../src/db/migrate.ts';
+import { ensureOwner } from './seedLib.ts';
 import {
   createColour,
   createProduct,
@@ -29,39 +29,7 @@ import { createCustomer, getCustomerByCode } from '../src/services/customers.ts'
 import { recordOpeningBalance } from '../src/services/stock.ts';
 import { nowTimestamp } from '../src/domain/dates.ts';
 
-const OWNER_USERNAME = 'owner';
 const DEMO_COLOURS = ['Black', 'Navy Blue', 'Olive', 'Maroon'];
-
-function hashPassword(password: string): { hash: string; salt: string } {
-  const salt = randomBytes(16).toString('hex');
-  return { hash: scryptSync(password, salt, 64).toString('hex'), salt };
-}
-
-/** Exported so a future login route uses exactly the same comparison. */
-export function verifyPassword(password: string, hash: string, salt: string): boolean {
-  const candidate = scryptSync(password, salt, 64);
-  const stored = Buffer.from(hash, 'hex');
-  return candidate.length === stored.length && timingSafeEqual(candidate, stored);
-}
-
-function ensureOwner(tx: Tx): { userId: number; created: boolean } {
-  const existing = tx.db.prepare('SELECT id FROM users WHERE username = ?').get(OWNER_USERNAME) as
-    | { id: number }
-    | undefined;
-  if (existing) {
-    return { userId: Number(existing.id), created: false };
-  }
-
-  const password = process.env.GARMENT_OWNER_PASSWORD ?? 'change-me';
-  const { hash, salt } = hashPassword(password);
-  const info = tx.db
-    .prepare(
-      `INSERT INTO users (username, password_hash, password_salt, display_name, role, created_at)
-       VALUES (?, ?, ?, ?, 'owner', ?)`,
-    )
-    .run(OWNER_USERNAME, hash, salt, 'Owner', nowTimestamp());
-  return { userId: Number(info.lastInsertRowid), created: true };
-}
 
 function seedDemo(tx: Tx, userId: number): void {
   for (const name of DEMO_COLOURS) {

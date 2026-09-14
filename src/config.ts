@@ -20,4 +20,5 @@ export const config = {
   cookieSecure: process.env.GARMENT_COOKIE_SECURE === '1',
   requireStrongPassword: process.env.GARMENT_REQUIRE_STRONG_PASSWORD === '1',
   authRequired: process.env.GARMENT_AUTH_REQUIRED !== '0',
+  baseDomain: process.env.GARMENT_BASE_DOMAIN ?? '',
 };

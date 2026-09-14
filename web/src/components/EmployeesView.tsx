@@ -224,19 +224,19 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ onEmployeeAdded, o
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Tailor #
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                  <th className="text-left py-3.5 px-6 text-[11px] font-medium text-slate-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
