@@ -26,8 +26,3 @@ CREATE TABLE IF NOT EXISTS control_users (
 INSERT INTO control_users (username, password_hash, full_name, email)
 SELECT 'admin', '--placeholder--', 'Platform Administrator', 'admin@example.com'
 WHERE NOT EXISTS (SELECT 1 FROM control_users WHERE username = 'admin');
-
--- Create a default tenant for testing
-INSERT INTO tenants (slug, name, db_path)
-SELECT 'demo', 'Demo Factory', 'data/tenants/demo.db'
-WHERE NOT EXISTS (SELECT 1 FROM tenants WHERE slug = 'demo');
