@@ -1,0 +1,5 @@
+{
+  "version": "1.2.0",
+  "build": "multi-tenant-saas-ready",
+  "testCount": 324
+}

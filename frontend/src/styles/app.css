@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    font-variant-numeric: tabular-nums;
+    @apply bg-slate-100 text-slate-900 transition-colors duration-150;
+  }
+
+  html.dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  /* Universal dark mode component styling */
+  html.dark .bg-white {
+    background-color: #0f172a !important; /* slate-900 */
+    color: #f1f5f9;
+  }
+
+  html.dark .bg-slate-50,
+  html.dark .bg-gray-50 {
+    background-color: #1e293b !important; /* slate-800 */
+    color: #e2e8f0;
+  }
+
+  html.dark .bg-slate-100,
+  html.dark .bg-gray-100 {
+    background-color: #1e293b !important; /* slate-800 */
+    color: #e2e8f0;
+  }
+
+  html.dark .bg-slate-200,
+  html.dark .bg-gray-200 {
+    background-color: #334155 !important; /* slate-700 */
+    color: #f8fafc;
+  }
+
+  html.dark .border-slate-100,
+  html.dark .border-gray-100,
+  html.dark .border-slate-200,
+  html.dark .border-gray-200,
+  html.dark .border-slate-300,
+  html.dark .border-gray-300 {
+    border-color: #334155 !important; /* slate-700 */
+  }
+
+  html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+  html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #334155 !important;
+  }
+
+  html.dark .text-slate-900,
+  html.dark .text-gray-900,
+  html.dark .text-slate-800,
+  html.dark .text-gray-800 {
+    color: #f8fafc !important;
+  }
+
+  html.dark .text-slate-700,
+  html.dark .text-gray-700 {
+    color: #e2e8f0 !important;
+  }
+
+  html.dark .text-slate-600,
+  html.dark .text-gray-600 {
+    color: #cbd5e1 !important;
+  }
+
+  html.dark .text-slate-500,
+  html.dark .text-gray-500 {
+    color: #94a3b8 !important;
+  }
+
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),
+  html.dark select,
+  html.dark textarea {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+    color: #f8fafc !important;
+  }
+
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #64748b !important;
+  }
+
+  html.dark input:focus,
+  html.dark select:focus,
+  html.dark textarea:focus {
+    border-color: #3b82f6 !important;
+    outline: none !important;
+  }
+
+  html.dark tr:hover td {
+    background-color: rgba(51, 65, 85, 0.4) !important;
+  }
+
+  /* Badge enhancements in dark mode */
+  html.dark .bg-emerald-50 {
+    background-color: rgba(6, 78, 59, 0.4) !important;
+    color: #6ee7b7 !important;
+    border-color: rgba(5, 150, 105, 0.5) !important;
+  }
+
+  html.dark .bg-red-50 {
+    background-color: rgba(127, 29, 29, 0.4) !important;
+    color: #fca5a5 !important;
+    border-color: rgba(220, 38, 38, 0.5) !important;
+  }
+
+  html.dark .bg-amber-50 {
+    background-color: rgba(120, 53, 15, 0.4) !important;
+    color: #fcd34d !important;
+    border-color: rgba(217, 119, 6, 0.5) !important;
+  }
+
+  html.dark .bg-blue-50 {
+    background-color: rgba(30, 58, 138, 0.4) !important;
+    color: #93c5fd !important;
+    border-color: rgba(37, 99, 235, 0.5) !important;
+  }
+}
+
+/* Custom subtle dark scrollbar */
+html.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}

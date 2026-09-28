@@ -1,0 +1,32 @@
+{
+  "name": "garment-factory",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "start": "node backend/src/main.ts",
+    "migrate": "node backend/src/db/migrate.ts",
+    "test": "npm test --prefix backend",
+    "test:watch": "npm run test:watch --prefix backend",
+    "seed": "node backend/scripts/seed.ts",
+    "seed:demo": "node backend/scripts/seed.ts --demo",
+    "backup": "node backend/scripts/backup.ts",
+    "verify-ledger": "node backend/scripts/verify-ledger.ts",
+    "create-tenant": "node backend/scripts/create-tenant.ts",
+    "list-tenants": "node backend/scripts/list-tenants.ts",
+    "dev": "npm run dev --prefix frontend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "node backend/src/main.ts",
+    "build": "npm run build --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

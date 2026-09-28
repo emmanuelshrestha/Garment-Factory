@@ -1,0 +1,497 @@
+import React, { useState, useEffect } from 'react';
+import { api, type Order, type Invoice, type Customer, formatMoney, formatDate } from '../api.ts';
+import { downloadCSV } from '../utils/csv.ts';
+
+interface OrdersListProps {
+  orders: Order[];
+  customers: Customer[];
+  invoices: Invoice[];
+  onRefresh: () => void;
+}
+
+export const OrdersList: React.FC<OrdersListProps> = ({
+  orders,
+  customers,
+  invoices,
+  onRefresh,
+}) => {
+  // Modal state
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState<string>('');
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
+  const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [showDispatchModal, setShowDispatchModal] = useState<boolean>(false);
+  const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
+  const [dispatchLines, setDispatchLines] = useState<Record<number, number>>({});
+  const [dispatchSubmitting, setDispatchSubmitting] = useState<boolean>(false);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+
+  // Filter state
+  const [filterCustomerId, setFilterCustomerId] = useState<string>('');
+  const [filterFrom, setFilterFrom] = useState<string>('');
+  const [filterTo, setFilterTo] = useState<string>('');
+  const [loadingFilters, setLoadingFilters] = useState<boolean>(false);
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>(orders);
+
+  // Keep filteredOrders in sync when parent refreshes
+  useEffect(() => {
+    setFilteredOrders(orders);
+  }, [orders]);
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const applyFilters = async () => {
+    setLoadingFilters(true);
+    setError(null);
+    try {
+      const { orders: filtered } = await api.getOrders({
+        customerId: filterCustomerId ? Number(filterCustomerId) : undefined,
+        fromDate: filterFrom || undefined,
+        toDate: filterTo || undefined,
+      });
+      setFilteredOrders(filtered);
+    } catch (err: any) {
+      setError(err.message || 'Failed to filter orders');
+    } finally {
+      setLoadingFilters(false);
+    }
+  };
+
+  const clearFilters = async () => {
+    setFilterCustomerId('');
+    setFilterFrom('');
+    setFilterTo('');
+    setFilteredOrders(orders);
+  };
+
+  const handleExport = () => {
+    const headers = ['Order No', 'Order Date', 'Customer', 'Status', 'Total Pieces', 'Total Amount', 'Currency'];
+    const data = filteredOrders.map(o => [
+      o.orderNo,
+      o.orderDate,
+      o.customerName,
+      o.status,
+      (o.lines ?? []).reduce((s, l) => s + l.qtyOrdered, 0),
+      (o.totalMinor / 100).toFixed(2),
+      o.currency,
+    ]);
+    downloadCSV(`orders_${new Date().toISOString().split('T')[0]}.csv`, headers, data);
+  };
+
+  const handlePrintInvoice = async (orderId: number) => {
+    const invoice = invoices.find(i => i.orderId === orderId && i.status === 'issued');
+    if (!invoice) {
+      alert('No issued invoice found for this order.');
+      return;
+    }
+    try {
+      const { invoice: fullInvoice } = await api.getInvoice(invoice.id);
+      setPrintInvoice(fullInvoice);
+    } catch {
+      alert('Failed to load invoice details.');
+    }
+  };
+
+  const handleCancelOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrder || !cancelReason.trim()) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      await api.cancelOrder(selectedOrder.id, cancelReason.trim());
+      setShowCancelModal(false);
+      setCancelReason('');
+      setSelectedOrder(null);
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel order');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openDispatchModal = async (ord: Order) => {
+    setActionLoading(true);
+    setDispatchError(null);
+    try {
+      const { order: fullOrder } = await api.getOrder(ord.id);
+      const initialQuantities: Record<number, number> = {};
+      (fullOrder.lines ?? []).forEach((l) => {
+        const remaining = l.qtyOrdered - l.qtyDelivered;
+        if (remaining > 0) initialQuantities[l.id] = remaining;
+      });
+      setDispatchOrder(fullOrder);
+      setDispatchLines(initialQuantities);
+      setShowDispatchModal(true);
+    } catch {
+      setError('Failed to load order details for dispatch.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCreateAndDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchOrder) return;
+    const lines = Object.entries(dispatchLines)
+      .map(([olId, qty]) => ({ orderLineId: Number(olId), qty }))
+      .filter((l) => l.qty > 0);
+    if (lines.length === 0) {
+      setDispatchError('Please specify at least one piece to deliver.');
+      return;
+    }
+    setDispatchSubmitting(true);
+    setDispatchError(null);
+    try {
+      const { delivery } = await api.createDelivery({ orderId: dispatchOrder.id, lines });
+      await api.dispatchDelivery(delivery.id);
+      setShowDispatchModal(false);
+      setDispatchOrder(null);
+      onRefresh();
+    } catch (err: unknown) {
+      setDispatchError(err instanceof Error ? err.message : 'Failed to dispatch delivery');
+    } finally {
+      setDispatchSubmitting(false);
+    }
+  };
+
+
+  const getStatusBadge = (status: Order['status']) => {
+    switch (status) {
+      case 'draft':             return 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+      case 'confirmed':         return 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+      case 'partially_delivered': return 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+      case 'delivered':         return 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+      case 'closed':            return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+      case 'cancelled':         return 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 line-through';
+      default:                  return 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+    }
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── Filter Bar ──────────────────────────────────────────────────────── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs p-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          {/* Customer */}
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Customer</label>
+            <select
+              value={filterCustomerId}
+              onChange={e => setFilterCustomerId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+            >
+              <option value="">All Customers</option>
+              {customers.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* From Date */}
+          <div className="flex-1 min-w-[140px]">
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Order Date From</label>
+            <input
+              type="date"
+              value={filterFrom}
+              onChange={e => setFilterFrom(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+            />
+          </div>
+
+          {/* To Date */}
+          <div className="flex-1 min-w-[140px]">
+            <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Order Date To</label>
+            <input
+              type="date"
+              value={filterTo}
+              onChange={e => setFilterTo(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={applyFilters}
+              disabled={loadingFilters}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl disabled:opacity-50 transition shadow-sm"
+            >
+              {loadingFilters ? 'Filtering…' : 'Apply Filter'}
+            </button>
+            <button
+              onClick={clearFilters}
+              className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition"
+            >
+              ✕ Clear
+            </button>
+            <button
+              onClick={handleExport}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Orders Table ────────────────────────────────────────────────────── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs overflow-hidden">
+        <div className="px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">Orders List</h3>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{filteredOrders.length} orders</span>
+        </div>
+
+        {error && (
+          <div className="mx-4 sm:mx-6 mt-4 p-3 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">{error}</div>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th className="py-2.5 px-3 sm:px-4 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap">Order #</th>
+                <th className="py-2.5 px-3 sm:px-4 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap">Date</th>
+                <th className="py-2.5 px-3 sm:px-4 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Customer</th>
+                <th className="py-2.5 px-3 sm:px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Status</th>
+                <th className="py-2.5 px-3 sm:px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Pieces</th>
+                <th className="py-2.5 px-3 sm:px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Shortage</th>
+                <th className="py-2.5 px-3 sm:px-4 text-right text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Total</th>
+                <th className="py-2.5 px-3 sm:px-4 text-center text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-10 text-center text-slate-400 dark:text-slate-500 text-xs">
+                    No orders found.
+                  </td>
+                </tr>
+              ) : (
+                filteredOrders.map((ord) => {
+                  const lines = ord.lines ?? [];
+                  const totalPieces = lines.reduce((s, l) => s + l.qtyOrdered, 0);
+                  const totalShortage = lines.reduce((s, l) => s + ((l as any).qtyShortage ?? 0), 0);
+                  const isDeliverable = ord.status === 'confirmed' || ord.status === 'partially_delivered';
+
+                  return (
+                    <tr key={ord.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-3 sm:px-4 font-mono font-bold text-blue-700 dark:text-blue-400 text-xs whitespace-nowrap">{ord.orderNo}</td>
+                      <td className="py-3 px-3 sm:px-4 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatDate(ord.orderDate)}</td>
+                      <td className="py-3 px-3 sm:px-4 font-semibold text-slate-800 dark:text-slate-200">{ord.customerName}</td>
+                      <td className="py-3 px-3 sm:px-4 text-center whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusBadge(ord.status)}`}>
+                          {ord.status.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 sm:px-4 text-right font-mono tabular-nums font-bold text-slate-900 dark:text-slate-100">{totalPieces}</td>
+                      <td className="py-3 px-3 sm:px-4 text-right font-mono tabular-nums">
+                        {totalShortage > 0 ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-bold text-xs">{totalShortage}</span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 sm:px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                        {formatMoney(ord.totalMinor, ord.currency)}
+                      </td>
+                      <td className="py-3 px-3 sm:px-4">
+                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                          {isDeliverable && (
+                            <button
+                              onClick={() => openDispatchModal(ord)}
+                              disabled={actionLoading}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition shadow-xs"
+                            >
+                              {actionLoading ? 'Loading...' : 'Dispatch'}
+                            </button>
+                          )}
+                          {invoices.some(i => i.orderId === ord.id && i.status === 'issued') && (
+                            <button
+                              onClick={() => handlePrintInvoice(ord.id)}
+                              className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold transition"
+                            >
+                              Print Bill
+                            </button>
+                          )}
+                          {(ord.status === 'draft' || ord.status === 'confirmed') && (
+                            <button
+                              onClick={() => { setSelectedOrder(ord); setShowCancelModal(true); setError(null); }}
+                              className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/60 text-slate-700 dark:text-slate-300 hover:text-red-700 dark:hover:text-red-300 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold transition"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Cancel Order Modal ───────────────────────────────────────────────── */}
+      {showCancelModal && selectedOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">Cancel Order {selectedOrder.orderNo}</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Releases all active stock reservations back to inventory.</p>
+              </div>
+              <button onClick={() => setShowCancelModal(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-bold text-lg p-1">✕</button>
+            </div>
+            {error && <div className="p-3 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">{error}</div>}
+            <form onSubmit={handleCancelOrder} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Reason for Cancellation (Required):</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  placeholder="e.g. Customer cancelled order"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-blue-600 focus:outline-none"
+                  required
+                />
+              </div>
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" onClick={() => setShowCancelModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">Back</button>
+                <button type="submit" disabled={actionLoading} className="px-5 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition shadow-sm">
+                  {actionLoading ? 'Cancelling…' : 'Confirm Cancellation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Print Invoice Modal ──────────────────────────────────────────────── */}
+      {printInvoice && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <span className="font-bold text-sm text-slate-600">Commercial Invoice</span>
+              <div className="flex gap-2">
+                <button onClick={() => window.print()} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs">Print</button>
+                <button onClick={() => setPrintInvoice(null)} className="px-3 py-1.5 border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold">Close</button>
+              </div>
+            </div>
+            <div className="space-y-5 text-slate-900">
+              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black tracking-tight">GARMENT FACTORY</h1>
+                  <p className="text-xs text-slate-500">Jacket & Apparel Manufacturing</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-base font-mono font-black text-blue-900 block">{printInvoice.invoiceNo}</span>
+                  <span className="text-xs text-slate-500 block">Date: {formatDate(printInvoice.invoiceDate)}</span>
+                  {printInvoice.dueDate && <span className="text-xs font-bold text-slate-700 block">Due: {formatDate(printInvoice.dueDate)}</span>}
+                </div>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-xl flex justify-between text-xs">
+                <div>
+                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Bill To</span>
+                  <span className="font-extrabold text-sm text-slate-900 block mt-0.5">{printInvoice.customerName}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 font-bold uppercase text-[10px] block">Currency</span>
+                  <span className="font-extrabold text-sm text-slate-900 block mt-0.5">{printInvoice.currency}</span>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-slate-300 text-slate-500 uppercase text-[10px]">
+                      <th className="py-2.5 px-3">Description</th>
+                      <th className="py-2.5 px-3 text-right">Qty</th>
+                      <th className="py-2.5 px-3 text-right">Unit Price</th>
+                      <th className="py-2.5 px-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(printInvoice.lines ?? []).map(l => (
+                      <tr key={l.id}>
+                        <td className="py-2.5 px-3 font-semibold">{l.description}</td>
+                        <td className="py-2.5 px-3 text-right font-bold">{l.qty}</td>
+                        <td className="py-2.5 px-3 text-right font-mono">{formatMoney(l.unitPriceMinor, printInvoice.currency)}</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold">{formatMoney(l.lineTotalMinor, printInvoice.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t-2 border-slate-900">
+                    <tr>
+                      <td colSpan={3} className="py-2 px-3 text-right font-bold">Subtotal</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">{formatMoney(printInvoice.subtotalMinor, printInvoice.currency)}</td>
+                    </tr>
+                    {printInvoice.discountMinor > 0 && (
+                      <tr>
+                        <td colSpan={3} className="py-1 px-3 text-right text-red-600">Discount ({printInvoice.discountReason})</td>
+                        <td className="py-1 px-3 text-right font-mono font-bold text-red-600">-{formatMoney(printInvoice.discountMinor, printInvoice.currency)}</td>
+                      </tr>
+                    )}
+                    <tr className="font-black text-sm bg-slate-100">
+                      <td colSpan={3} className="py-3 px-3 text-right">Grand Total</td>
+                      <td className="py-3 px-3 text-right font-mono">{formatMoney(printInvoice.totalMinor, printInvoice.currency)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div className="pt-6 text-center text-xs text-slate-400">
+                Thank you for your business • Authorized Signature: _______________________
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispatch Modal */}
+      {showDispatchModal && dispatchOrder && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">Dispatch for Order {dispatchOrder.orderNo}</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Set quantities to dispatch. Dispatching writes outward stock movements.</p>
+              </div>
+              <button onClick={() => setShowDispatchModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xl font-bold p-1">×</button>
+            </div>
+            {dispatchError && <div className="p-3 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">{dispatchError}</div>}
+            <form onSubmit={handleCreateAndDispatch} className="space-y-3">
+              {(dispatchOrder.lines ?? []).filter(l => l.qtyOrdered - l.qtyDelivered > 0).map(l => (
+                <div key={l.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{l.productName} — {l.colour} / {l.size}</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-mono">Remaining: {l.qtyOrdered - l.qtyDelivered} pcs</span>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    max={l.qtyOrdered - l.qtyDelivered}
+                    value={dispatchLines[l.id] ?? ""}
+                    onChange={e => setDispatchLines(prev => ({ ...prev, [l.id]: Number(e.target.value) }))}
+                    className="w-20 px-2 py-1 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-sm font-mono text-right focus:border-blue-600 focus:outline-none"
+                    placeholder="0"
+                  />
+                </div>
+              ))}
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button type="button" onClick={() => setShowDispatchModal(false)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">Cancel</button>
+                <button type="submit" disabled={dispatchSubmitting} className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition shadow-sm">
+                  {dispatchSubmitting ? 'Dispatching…' : 'Confirm Dispatch'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
