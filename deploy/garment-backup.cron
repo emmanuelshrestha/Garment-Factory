@@ -1,0 +1,5 @@
+# Garment Factory nightly backup — install with: crontab -e
+#
+# 00:00 every night, appending to data/backups/backup.log.
+# Retention defaults to 30 days; override with BACKUP_KEEP_DAYS in the environment.
+0 0 * * * cd /opt/garment-factory && /usr/bin/node backend/scripts/backup.ts >> data/backups/backup.log 2>&1

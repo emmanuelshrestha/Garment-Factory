@@ -60,11 +60,13 @@ export function buildRouter(app: AppContext): Router {
 }
 
 export function createApiServer(app: AppContext, options: ServerOptions = {}): Server {
-  const requireAuth =
-    options.requireAuth ??
-    (process.env.GARMENT_REQUIRE_AUTH === '1' || process.env.NODE_ENV === 'production');
+  // Single source of truth: config.authRequired is forced to true when
+  // NODE_ENV=production, so a stray GARMENT_AUTH_REQUIRED=0 cannot open the
+  // API on a factory LAN. `options.requireAuth` remains an explicit test override.
+  const requireAuth = options.requireAuth ?? config.authRequired;
 
   return createServer(async (req: IncomingMessage, res: ServerResponse) => {
+    applySecurityHeaders(res);
     try {
       const url = new URL(req.url ?? '/', 'http://localhost');
       const pathname = url.pathname;
@@ -132,6 +134,27 @@ export function createApiServer(app: AppContext, options: ServerOptions = {}): S
       sendError(res, error);
     }
   });
+}
+
+/**
+ * Defensive headers applied to every response, API and static alike.
+ *
+ * This app never embeds third-party content, never frames itself and never
+ * needs a Referer, so the strictest values cost nothing. Static assets keep
+ * their own content-type; these only add the safety headers.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+  'x-content-type-options': 'nosniff',
+  'x-frame-options': 'DENY',
+  'referrer-policy': 'no-referrer',
+};
+
+function applySecurityHeaders(res: ServerResponse): void {
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    if (!res.hasHeader(name)) {
+      res.setHeader(name, value);
+    }
+  }
 }
 
 const CONTENT_TYPES: Record<string, string> = {

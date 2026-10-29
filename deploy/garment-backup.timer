@@ -1,0 +1,13 @@
+# Nightly backup at 00:00 local time.
+# Enable: sudo systemctl enable --now garment-backup.timer
+# Check:  systemctl list-timers garment-backup.timer
+[Unit]
+Description=Nightly Garment Factory database backup at midnight
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

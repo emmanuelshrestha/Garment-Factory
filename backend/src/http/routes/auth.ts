@@ -38,7 +38,7 @@ export function authRoutes(app: AppContext): Route[] {
 
         res.setHeader(
           'Set-Cookie',
-          `garment_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${12 * 3600}${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
+          `garment_session=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${config.sessionTtlHours * 3600}${config.cookieSecure ? '; Secure' : ''}${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
         );
         sendJson(res, 200, { user });
       },
@@ -56,7 +56,7 @@ export function authRoutes(app: AppContext): Route[] {
         }
         res.setHeader(
           'Set-Cookie',
-          `garment_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
+          `garment_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${config.cookieSecure ? '; Secure' : ''}${config.baseDomain ? `; Domain=.${config.baseDomain}` : ''}`
         );
         sendJson(res, 200, { ok: true });
       },

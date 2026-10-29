@@ -8,6 +8,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { Socket } from 'node:net';
 import { config } from './config.ts';
 import { closeDatabase, openDatabase } from './db/sqlite.ts';
 import { migrate } from './db/migrate.ts';
@@ -44,17 +45,62 @@ function main(): void {
     }
   });
 
+  // Track live sockets so shutdown can drain them instead of leaving a
+  // keep-alive connection holding the process open.
+  const sockets = new Set<Socket>();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+
+  let shuttingDown = false;
+
+  /**
+   * Graceful shutdown.
+   *
+   * Order matters: stop accepting new connections, let in-flight requests
+   * finish, then close the database. `db.close()` is what checkpoints the WAL
+   * back into the main file; exiting without it can leave a large -wal file and
+   * loses the chance to fold it in cleanly.
+   */
   const shutdown = (signal: string) => {
-    console.log(`\n${signal} received, closing.`);
-    server.close(() => {
-      closeDatabase(db);
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    console.log(`\n${signal} received, draining connections.`);
+
+    let closed = false;
+    const finish = (reason: string) => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      try {
+        closeDatabase(db);
+        console.log(`database closed (${reason}), WAL checkpointed.`);
+      } catch (error) {
+        console.error('failed to close database during shutdown:', error);
+      }
       process.exit(0);
-    });
-    // A stuck keep-alive socket must not keep the database open forever.
+    };
+
+    server.close(() => finish('all connections drained'));
+
+    // Destroy idle keep-alive sockets immediately; active ones get the grace
+    // period below to finish their response.
+    for (const socket of sockets) {
+      if (!socket.destroyed) {
+        socket.end();
+      }
+    }
+
     setTimeout(() => {
-      closeDatabase(db);
-      process.exit(0);
-    }, 3000).unref();
+      for (const socket of sockets) {
+        socket.destroy();
+      }
+      finish('grace period elapsed');
+    }, 10_000).unref();
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));

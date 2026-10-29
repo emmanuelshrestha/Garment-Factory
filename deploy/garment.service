@@ -1,0 +1,56 @@
+# Garment Factory server — systemd unit template.
+#
+# Install:
+#   sudo cp deploy/garment.service /etc/systemd/system/garment.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now garment
+#   sudo systemctl status garment
+#
+# Edit User / WorkingDirectory below to match the factory machine.
+
+[Unit]
+Description=Garment Factory Management System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=garment
+Group=garment
+WorkingDirectory=/opt/garment-factory
+
+# Node 22 strips TypeScript natively; the backend needs no build step.
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=4000
+Environment=DATABASE_PATH=/opt/garment-factory/data/garment.db
+Environment=BACKUP_DIR=/opt/garment-factory/data/backups
+Environment=BACKUP_KEEP_DAYS=30
+
+# SESSION_SECRET lives here, never in the unit file itself.
+#   sudo install -m 600 -o garment -g garment /dev/null /etc/garment-factory.env
+#   echo "SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(48).toString('hex'))")" | sudo tee -a /etc/garment-factory.env
+EnvironmentFile=-/etc/garment-factory.env
+
+ExecStart=/usr/bin/node backend/src/main.ts
+Restart=on-failure
+RestartSec=3
+
+# main.ts drains connections, then closes SQLite so the WAL checkpoints.
+# Allow the full 10s drain window plus headroom before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Hardening: the service needs write access only to its data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/garment-factory/data
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=garment
+
+[Install]
+WantedBy=multi-user.target

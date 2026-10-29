@@ -1,0 +1,19 @@
+# One-shot nightly database backup. Started by garment-backup.timer.
+[Unit]
+Description=Garment Factory hot database backup
+After=garment.service
+
+[Service]
+Type=oneshot
+User=garment
+Group=garment
+WorkingDirectory=/opt/garment-factory
+Environment=NODE_ENV=production
+Environment=DATABASE_PATH=/opt/garment-factory/data/garment.db
+Environment=BACKUP_DIR=/opt/garment-factory/data/backups
+Environment=BACKUP_KEEP_DAYS=30
+EnvironmentFile=-/etc/garment-factory.env
+ExecStart=/usr/bin/node backend/scripts/backup.ts
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
