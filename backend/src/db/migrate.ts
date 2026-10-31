@@ -89,22 +89,24 @@ function ensureMigrationsTable(db: Db): void {
 
 // --- CLI: `npm run migrate` -------------------------------------------------
 
-if (process.argv[1] === import.meta.filename) {
-  const { config } = await import('../config.ts');
-  const { openDatabase, closeDatabase } = await import('./sqlite.ts');
-  const { mkdirSync } = await import('node:fs');
-  const { dirname } = await import('node:path');
+if (process.argv[1]?.includes('migrate')) {
+  void (async () => {
+    const { config } = await import('../config.ts');
+    const { openDatabase, closeDatabase } = await import('./sqlite.ts');
+    const { mkdirSync } = await import('node:fs');
+    const { dirname } = await import('node:path');
 
-  mkdirSync(dirname(config.databasePath), { recursive: true });
-  const db = openDatabase(config.databasePath);
-  try {
-    const result = migrate(db, { verbose: true });
-    if (result.applied.length === 0) {
-      console.log(`up to date (${result.alreadyApplied.length} migration(s) already applied)`);
-    } else {
-      console.log(`applied ${result.applied.length} migration(s)`);
+    mkdirSync(dirname(config.databasePath), { recursive: true });
+    const db = openDatabase(config.databasePath);
+    try {
+      const result = migrate(db, { verbose: true });
+      if (result.applied.length === 0) {
+        console.log(`up to date (${result.alreadyApplied.length} migration(s) already applied)`);
+      } else {
+        console.log(`applied ${result.applied.length} migration(s)`);
+      }
+    } finally {
+      closeDatabase(db);
     }
-  } finally {
-    closeDatabase(db);
-  }
+  })();
 }

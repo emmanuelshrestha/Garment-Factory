@@ -13,6 +13,14 @@ import { getSessionUser, type UserView } from '../services/auth.ts';
 export type AppContext = {
   db: Db;
   currentUserId: number;
+  /**
+   * Who is acting, when the server knows. Absent in unit tests and in the
+   * no-auth development mode, where handlers fall back to the owner account.
+   * Only RBAC guards read this; no domain logic branches on it.
+   */
+  role?: 'owner' | 'staff';
+  /** The staff_users row, when a floor worker signed in with a PIN. */
+  staffId?: number;
 };
 
 /** The owner account. Created by the migrations or the seed script. */

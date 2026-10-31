@@ -11,10 +11,12 @@ import { readFile } from 'node:fs/promises';
 import { join, normalize, sep } from 'node:path';
 import type { AppContext } from './context.ts';
 import { Router } from './router.ts';
+import { requireOwner } from './rbac.ts';
 import { sendError, sendJson, sendText } from './respond.ts';
 import { readOnly } from '../db/sqlite.ts';
 import { parseCookies } from './routes/auth.ts';
-import { getSessionUser } from '../services/auth.ts'; import { tenantSlugFromHost } from '../domain/tenants.ts'; import { config } from '../config.ts';
+import { getSessionUser } from '../services/auth.ts';
+import { getStaffSessionUser } from '../services/staff.ts'; import { tenantSlugFromHost } from '../domain/tenants.ts'; import { config } from '../config.ts';
 import { getTenantDb } from '../db/tenantManager.ts';
 import { catalogueRoutes } from './routes/catalogue.ts';
 import { customerRoutes } from './routes/customers.ts';
@@ -29,6 +31,9 @@ import { stockRoutes } from './routes/stock.ts';
 import { cuttingStockRoutes } from './routes/cuttingStock.ts';
 import { employeeRoutes } from './routes/employees.ts';
 import { authRoutes } from './routes/auth.ts';
+import { staffRoutes } from './routes/staff.ts';
+import { bagRoutes } from './routes/bags.ts';
+import { cuttingRoutes } from './routes/cutting.ts';
 
 export type ServerOptions = {
   /** Directory holding the interim console or compiled React app. Omit to serve the API only. */
@@ -56,7 +61,10 @@ export function buildRouter(app: AppContext): Router {
     .addAll(stockRoutes(app))
     .addAll(cuttingStockRoutes(app))
     .addAll(employeeRoutes(app))
-    .addAll(authRoutes(app));
+    .addAll(authRoutes(app))
+    .addAll(staffRoutes(app))
+    .addAll(bagRoutes(app))
+    .addAll(cuttingRoutes(app));
 }
 
 export function createApiServer(app: AppContext, options: ServerOptions = {}): Server {
@@ -70,7 +78,10 @@ export function createApiServer(app: AppContext, options: ServerOptions = {}): S
     try {
       const url = new URL(req.url ?? '/', 'http://localhost');
       const pathname = url.pathname;
-      const isPublicApi = pathname === '/api/health' || pathname.startsWith('/api/auth/');
+      const isPublicApi =
+        pathname === '/api/health' ||
+        pathname.startsWith('/api/auth/') ||
+        pathname === '/api/staff/login';
 
       const hostHeader = req.headers['host'];
       const explicitTenant = req.headers['x-tenant-slug'] ?? req.headers['x-tenant'];
@@ -95,8 +106,12 @@ export function createApiServer(app: AppContext, options: ServerOptions = {}): S
         const cookies = parseCookies(req);
         const sessionId = cookies['garment_session'];
         const user = sessionId ? readOnly(tenantDb, (tx) => getSessionUser(tx, sessionId)) : null;
+        const staffSessionId = cookies['staff_session'];
+        const staffUser = !user && staffSessionId
+          ? readOnly(tenantDb, (tx) => getStaffSessionUser(tx, staffSessionId))
+          : null;
 
-        if (requireAuth && !user) {
+        if (requireAuth && !user && !staffUser) {
           sendJson(res, 401, {
             error: 'unauthenticated',
             message: 'Authentication required. Please log in.',
@@ -105,9 +120,20 @@ export function createApiServer(app: AppContext, options: ServerOptions = {}): S
         }
 
         if (user) {
-          requestApp = { db: tenantDb, currentUserId: user.id };
+          requestApp = { db: tenantDb, currentUserId: user.id, role: 'owner' };
+        } else if (staffUser) {
+          requestApp = {
+            db: tenantDb,
+            currentUserId: staffUser.id,
+            role: staffUser.role,
+            staffId: staffUser.id,
+          };
         }
       }
+
+      // Floor staff may not touch money. The check is path-based and lives in
+      // one place so a new financial route declares itself by its prefix.
+      requireOwner(requestApp, pathname);
 
       const router = buildRouter(requestApp);
 

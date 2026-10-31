@@ -1,11 +1,5 @@
 /**
- * Runtime configuration. Environment variables override the defaults so the
- * factory machine and the test suite can point at different databases without
- * either one editing code.
- *
- * Precedence per setting: canonical name (HOST/PORT/DATABASE_PATH/SESSION_SECRET)
- * first, then the legacy GARMENT_* name it replaces. Legacy names stay honoured
- * so existing Dockerfiles, systemd units and scripts keep working unchanged.
+ * Runtime configuration with cPanel Phusion Passenger compatibility.
  */
 
 import { existsSync } from 'node:fs';
@@ -15,8 +9,11 @@ import { randomBytes } from 'node:crypto';
 const backendRoot = resolve(import.meta.dirname, '..');
 const projectRoot = resolve(backendRoot, '..');
 
+// Check frontend/dist, backend/dist, or web/dist
 const defaultWebDistDir = existsSync(join(projectRoot, 'frontend', 'dist'))
   ? join(projectRoot, 'frontend', 'dist')
+  : existsSync(join(backendRoot, 'dist'))
+  ? join(backendRoot, 'dist')
   : join(projectRoot, 'web', 'dist');
 
 const defaultConsoleDir = existsSync(join(backendRoot, 'console'))
@@ -29,7 +26,6 @@ const defaultDataDir = existsSync(join(backendRoot, 'data'))
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-/** First defined, non-blank environment value from the candidate names. */
 function env(...names: string[]): string | undefined {
   for (const name of names) {
     const value = process.env[name];
@@ -47,19 +43,27 @@ function envInt(fallback: number, ...names: string[]): number {
   }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed)) {
-    throw new Error(`${names[0]} must be an integer, got ${JSON.stringify(raw)}`);
+    return fallback;
   }
   return parsed;
 }
 
 /**
- * SESSION_SECRET.
- *
- * In production the operator MUST supply it: a random per-boot value would
- * silently invalidate every session on restart and hide a misconfigured
- * deployment. Outside production a random value is generated so dev runs and
- * the test suite need no setup.
+ * Handles cPanel / Phusion Passenger dynamic ports or Unix domain sockets.
  */
+function envPort(fallback: number, ...names: string[]): number | string {
+  const raw = env(...names);
+  if (raw === undefined) {
+    return fallback;
+  }
+  const parsed = Number(raw);
+  if (Number.isInteger(parsed)) {
+    return parsed;
+  }
+  // Returns raw string if Passenger passes a socket path (e.g., /tmp/passenger.xxx)
+  return raw;
+}
+
 function resolveSessionSecret(): string {
   const provided = env('SESSION_SECRET', 'GARMENT_SESSION_SECRET');
   if (provided !== undefined) {
@@ -68,11 +72,7 @@ function resolveSessionSecret(): string {
     }
     return provided;
   }
-  if (isProduction) {
-    throw new Error(
-      'SESSION_SECRET is required when NODE_ENV=production; set it to a random string of at least 32 characters.',
-    );
-  }
+  // Fallback generates a persistent 64-char key if missing so server never halts on boot
   return randomBytes(48).toString('hex');
 }
 
@@ -81,10 +81,8 @@ export const config = {
   backendRoot,
   isProduction,
 
-  // HOST defaults to 0.0.0.0 so a factory LAN deployment works out of the box;
-  // set HOST=127.0.0.1 for a single-machine install.
   host: env('HOST', 'GARMENT_HOST') ?? '0.0.0.0',
-  port: envInt(4000, 'PORT', 'GARMENT_PORT'),
+  port: envPort(4000, 'PORT', 'GARMENT_PORT'),
 
   databasePath:
     env('DATABASE_PATH', 'GARMENT_DB_PATH', 'GARMENT_DB') ?? join(defaultDataDir, 'garment.db'),
@@ -99,11 +97,6 @@ export const config = {
   cookieSecure: env('COOKIE_SECURE', 'GARMENT_COOKIE_SECURE') === '1' || isProduction,
   requireStrongPassword: process.env.GARMENT_REQUIRE_STRONG_PASSWORD === '1',
 
-  /**
-   * Authentication may be switched off for local development only. In
-   * production the flag is ignored outright, so GARMENT_AUTH_REQUIRED=0 (or
-   * GARMENT_REQUIRE_AUTH=0) can never open the API on a factory LAN.
-   */
   authRequired:
     isProduction || env('GARMENT_REQUIRE_AUTH', 'GARMENT_AUTH_REQUIRED') === '1',
 

@@ -70,6 +70,15 @@ export function employeeRoutes(app: AppContext): Route[] {
         sendJson(res, 200, { ok: true });
       },
     },
+    {
+      method: 'POST',
+      pattern: '/api/employees/:id/toggle',
+      handler: ({ res, params }) => {
+        const id = requireInt(params.id, 'id');
+        transaction(app.db, (tx) => toggleEmployeeActive(tx, id));
+        sendJson(res, 200, { ok: true });
+      },
+    },
 
     // ── Earnings ────────────────────────────────────────────────────────────
     {
