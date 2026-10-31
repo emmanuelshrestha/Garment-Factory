@@ -34,8 +34,8 @@ import { ReturnsView } from './components/ReturnsView.tsx';
 import { LoginPage } from './components/LoginPage.tsx';
 import { LogoutButton } from './components/LogoutButton.tsx';
 import { ThemeToggle } from './components/ThemeToggle.tsx';
+import { ExpensesView } from './components/ExpensesView.tsx';
 
-// Auth hook
 function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('isAuthenticated') === 'true';
@@ -66,16 +66,31 @@ function useAuth() {
   return { isAuthenticated, user, login, logout };
 }
 
-// Main App
 export function App() {
   const { isAuthenticated, user, login, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
+  
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as TabKey;
+    const validTabs: TabKey[] = [
+      'dashboard', 'catalogue', 'inventory', 'cutting', 'orders', 
+      'deliveries', 'invoices', 'payments', 'ledger', 'earnings', 'returns'
+    ];
+    return validTabs.includes(tabParam) ? tabParam : 'dashboard';
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('tab')) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   const [ordersSubTab, setOrdersSubTab] = useState<'create' | 'list'>('create');
   const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<Order | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
-  // Core state
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -89,8 +104,11 @@ export function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+
   const [earningsSubTab, setEarningsSubTab] = useState<'monthly' | 'employees'>('monthly');
   const [selectedEmployeeForHistory, setSelectedEmployeeForHistory] = useState<Employee | null>(null);
+  const [ledgerSubTab, setLedgerSubTab] = useState<'expenses' | 'purchases'>('expenses');
+  const [selectedSupplierForHistory, setSelectedSupplierForHistory] = useState<string | null>(null);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,12 +171,10 @@ export function App() {
     }
   };
 
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     return <LoginPage onLogin={login} />;
   }
 
-  // Render loading/error states
   if (loading && !dashboard) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -185,7 +201,6 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col md:flex-row font-sans text-slate-900 dark:text-slate-100 selection:bg-blue-600 selection:text-white transition-colors duration-150">
-      {/* Mobile Top App Bar */}
       <div className="md:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20 shadow-2xs">
         <div className="flex items-center gap-2.5">
           <button
@@ -218,6 +233,7 @@ export function App() {
         onSelectTab={(tab) => {
           setActiveTab(tab);
           if (tab !== 'deliveries') setSelectedOrderForDispatch(null);
+          if (tab !== 'ledger') setSelectedSupplierForHistory(null);
         }}
         redCount={dashboard?.inventory?.redCount ?? 0}
         shortageCount={dashboard?.orders?.shortageVariantsCount ?? 0}
@@ -246,7 +262,7 @@ export function App() {
                   {activeTab === 'orders' && 'Orders'}
                   {activeTab === 'deliveries' && 'Deliveries'}
                   {activeTab === 'invoices' && 'Invoices & Billing'}
-                  {activeTab === 'payments' && 'Payments'}
+                  {activeTab === 'payments' && 'Customer Collections & Cheques'}
                   {activeTab === 'ledger' && 'Expenses & Purchases'}
                   {activeTab === 'earnings' && 'Employee Earnings'}
                   {activeTab === 'returns' && 'Returns'}
@@ -373,12 +389,72 @@ export function App() {
             />
           )}
 
+          {/* Expenses & Purchases Tab */}
           {activeTab === 'ledger' && (
-            <LedgerView
-              expenses={expenses}
-              purchases={purchases}
-              onRefresh={loadAllData}
-            />
+            <div className="space-y-6">
+              <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLedgerSubTab('expenses');
+                    setSelectedSupplierForHistory(null);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap shrink-0 ${
+                    ledgerSubTab === 'expenses' && !selectedSupplierForHistory
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  Operating Expenses
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLedgerSubTab('purchases');
+                    setSelectedSupplierForHistory(null);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 whitespace-nowrap shrink-0 ${
+                    ledgerSubTab === 'purchases' && !selectedSupplierForHistory
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  <span>Raw Materials & Purchases</span>
+                  <span className="bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-1.5 py-0.2 rounded-full text-[10px]">
+                    {purchases.length}
+                  </span>
+                </button>
+                {selectedSupplierForHistory && (
+                  <button
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 text-white shadow-sm flex items-center space-x-1 whitespace-nowrap shrink-0"
+                  >
+                    <span>Supplier Record: {selectedSupplierForHistory}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedSupplierForHistory(null);
+                      }}
+                      className="ml-2 hover:bg-amber-700 px-1 rounded cursor-pointer"
+                    >
+                      ✕
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {ledgerSubTab === 'expenses' && !selectedSupplierForHistory ? (
+                <ExpensesView expenses={expenses} onRefresh={loadAllData} />
+              ) : (
+                <LedgerView
+                  expenses={expenses}
+                  purchases={purchases}
+                  onRefresh={loadAllData}
+                  selectedSupplier={selectedSupplierForHistory}
+                  onSelectSupplier={(name) => setSelectedSupplierForHistory(name)}
+                  onBack={() => setSelectedSupplierForHistory(null)}
+                />
+              )}
+            </div>
           )}
 
           {activeTab === 'earnings' && (

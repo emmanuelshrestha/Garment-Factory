@@ -25,8 +25,6 @@ export function formatDate(isoDate: string): string {
   return `${day} ${month} ${year}`;
 }
 
-// ─── Catalogue ────────────────────────────────────────────────────────────────
-
 export type Colour = { id: number; name: string; isActive: boolean };
 export type Size = { id: number; name: string; sortOrder: number; isActive: boolean };
 
@@ -55,8 +53,6 @@ export type ProductVariant = {
   isActive: boolean;
 };
 
-// ─── Stock ────────────────────────────────────────────────────────────────────
-
 export type StockSummary = {
   variantId: number;
   sku: string;
@@ -84,8 +80,6 @@ export type CuttingStockSummary = {
   onHand: number;
 };
 
-// ─── Customers ────────────────────────────────────────────────────────────────
-
 export type Customer = {
   id: number;
   code: string;
@@ -96,8 +90,6 @@ export type Customer = {
   notes: string | null;
   isActive: boolean;
 };
-
-// ─── Orders ───────────────────────────────────────────────────────────────────
 
 export type OrderLine = {
   id: number;
@@ -131,8 +123,6 @@ export type Order = {
   totalShortageQty: number;
 };
 
-// ─── Deliveries ───────────────────────────────────────────────────────────────
-
 export type DeliveryLine = {
   id: number;
   orderLineId: number;
@@ -160,8 +150,6 @@ export type Delivery = {
   lines: DeliveryLine[];
   totalQty: number;
 };
-
-// ─── Invoices ─────────────────────────────────────────────────────────────────
 
 export type InvoiceLine = {
   id: number;
@@ -216,8 +204,6 @@ export type BillableDeliveryLine = {
   currency: Currency;
 };
 
-// ─── Payments ─────────────────────────────────────────────────────────────────
-
 export type PaymentAllocation = {
   id: number;
   invoiceId: number;
@@ -271,8 +257,6 @@ export type CustomerStatement = {
   payments: Payment[];
 };
 
-// ─── Expenses & Purchases ─────────────────────────────────────────────────────
-
 export type Expense = {
   id: number;
   expenseNo: string;
@@ -300,8 +284,6 @@ export type Purchase = {
   createdAt: string;
 };
 
-// ─── Employee Earnings ──────────────────────────────────────────────────────────
-
 export type Employee = {
   id: number;
   tailorNumber: string;
@@ -317,7 +299,7 @@ export type EarningsEntry = {
   employeeName: string;
   tailorNumber: string;
   fiscalYear: number;
-  month: number; // 1-12 for Nepali months (Baisakh=1)
+  month: number;
   quantity: number;
   totalEarned: number;
   advance: number;
@@ -340,8 +322,6 @@ export type MonthlyEarningsSummary = {
   openingDue: number;
   closingDue: number;
 };
-
-// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export type DashboardSummary = {
   asOf: string;
@@ -382,8 +362,6 @@ export type DashboardSummary = {
   }>;
 };
 
-// ─── HTTP client ──────────────────────────────────────────────────────────────
-
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const tenantSlug = localStorage.getItem('tenantSlug') ?? '';
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(opts.headers as Record<string, string> ?? {}) };
@@ -407,13 +385,9 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ─── API surface ──────────────────────────────────────────────────────────────
-
 export const api = {
-  // Dashboard
   getDashboard: () => request<{ dashboard: DashboardSummary }>('/api/dashboard'),
 
-  // Catalogue — colours
   getColours: () => request<{ colours: Colour[] }>('/api/colours'),
   createColour: (name: string) =>
     request<{ id: number }>('/api/colours', { method: 'POST', body: JSON.stringify({ name }) }),
@@ -424,7 +398,6 @@ export const api = {
   deactivateColour: (id: number) =>
     request<{ ok: boolean }>(`/api/colours/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }),
 
-  // Catalogue — sizes
   getSizes: () => request<{ sizes: Size[] }>('/api/sizes'),
   createSize: (name: string, sortOrder: number) =>
     request<{ id: number }>('/api/sizes', { method: 'POST', body: JSON.stringify({ name, sortOrder }) }),
@@ -435,7 +408,6 @@ export const api = {
   deactivateSize: (id: number) =>
     request<{ ok: boolean }>(`/api/sizes/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive: false }) }),
 
-  // Catalogue — products
   getProducts: () => request<{ products: Product[] }>('/api/products'),
   getProduct: (id: number) =>
     request<{ product: Product; variants: ProductVariant[]; priceHistory: unknown[] }>(`/api/products/${id}`),
@@ -472,7 +444,6 @@ export const api = {
       body: JSON.stringify({ priceMinor, note }),
     }),
 
-  // Catalogue — variants
   getVariants: (productId?: number) => {
     const q = productId ? `?productId=${productId}` : '';
     return request<{ variants: ProductVariant[] }>(`/api/variants${q}`);
@@ -487,7 +458,6 @@ export const api = {
   deleteVariant: (id: number) =>
     request<{ ok: boolean }>(`/api/variants/${id}`, { method: 'DELETE' }),
 
-  // Stock
   getStockSummaries: (params: { productId?: number; activeOnly?: boolean } = {}) => {
     const qParts: string[] = [];
     if (params.productId !== undefined) qParts.push(`productId=${params.productId}`);
@@ -509,7 +479,6 @@ export const api = {
     lines: { variantId: number; qtyDelta: number }[];
   }) => request<{ ok: boolean }>('/api/stock/adjustments', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Cutting Stock
   getCuttingStockSummaries: () => request<{ summaries: CuttingStockSummary[] }>('/api/cutting-stock'),
   addCuttingStock: (variantId: number, qty: number) =>
     request<{ ok: boolean }>('/api/cutting-stock/add', {
@@ -527,7 +496,6 @@ export const api = {
       body: JSON.stringify({ variantId, qtyDelta, reasonCode, note }),
     }),
 
-  // Customers
   getCustomers: (params: { activeOnly?: boolean; search?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.activeOnly) q.set('activeOnly', 'true');
@@ -552,7 +520,6 @@ export const api = {
   getCustomerStatement: (customerId: number) =>
     request<{ statement: CustomerStatement }>(`/api/customers/${customerId}/statement`),
 
-  // Orders
   getOrders: (params: { customerId?: number; status?: string; openOnly?: boolean; fromDate?: string; toDate?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.customerId) q.set('customerId', String(params.customerId));
@@ -580,7 +547,6 @@ export const api = {
   closeOrder: (orderId: number) =>
     request<{ order: Order }>(`/api/orders/${orderId}/close`, { method: 'POST' }),
 
-  // Deliveries
   getDeliveries: (params: { orderId?: number; customerId?: number; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.orderId) q.set('orderId', String(params.orderId));
@@ -604,7 +570,6 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
-  // Invoices
   getInvoices: (params: { customerId?: number; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.customerId) q.set('customerId', String(params.customerId));
@@ -634,7 +599,6 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
-  // Payments
   getPayments: (params: { customerId?: number; status?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.customerId) q.set('customerId', String(params.customerId));
@@ -684,7 +648,6 @@ export const api = {
       body: JSON.stringify({ reason }),
     }),
 
-  // Expenses
   getExpenses: () => request<{ expenses: Expense[] }>('/api/expenses'),
   createExpense: (data: {
     category: string;
@@ -692,20 +655,20 @@ export const api = {
     currency?: Currency;
     method: PaymentMethod;
     payee?: string | null;
+    expenseDate?: string;
     note?: string | null;
   }) => request<{ expense: Expense }>('/api/expenses', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Purchases
   getPurchases: () => request<{ purchases: Purchase[] }>('/api/purchases'),
   createPurchase: (data: {
     supplierName: string;
     description: string;
     amountMinor: number;
     currency?: Currency;
+    purchaseDate?: string;
     note?: string | null;
   }) => request<{ purchase: Purchase }>('/api/purchases', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Production
   createCuttingJob: (data: { variantId: number; qty: number; cutDate: string; orderId?: number }) =>
     request<{ jobId: number }>('/api/production/cutting-jobs', { method: 'POST', body: JSON.stringify(data) }),
   getCuttingJobs: () => request<{ jobs: any[] }>('/api/production/cutting-jobs'),
@@ -726,7 +689,6 @@ export const api = {
     note: string;
   }) => request<{ inspectionId: number }>('/api/production/qc-inspections', { method: 'POST', body: JSON.stringify(data) }),
 
-  // Raw Materials
   recordRawMovement: (data: {
     materialId: number;
     qty: number;
@@ -737,8 +699,6 @@ export const api = {
     note?: string;
   }) => request<{ movementId: number }>('/api/raw-materials/movements', { method: 'POST', body: JSON.stringify(data) }),
 
-  // ─── Employee Earnings ──────────────────────────────────────────────────────────
-  // Employees
   getEmployees: (activeOnly?: boolean) => {
     const q = activeOnly ? '?activeOnly=true' : '';
     return request<{ employees: Employee[] }>(`/api/employees${q}`);
@@ -746,13 +706,16 @@ export const api = {
   createEmployee: (data: { tailorNumber: string; name: string }) =>
     request<{ employee: Employee }>('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
   toggleEmployee: (id: number) =>
-    request<{ employee: Employee }>(`/api/employees/${id}/toggle`, { method: 'PATCH' }),
+    request<{ ok: boolean }>(`/api/employees/${id}/toggle`, { method: 'PATCH' }),
+  toggleEmployeeStatus: (id: number) =>
+    request<{ ok: boolean }>(`/api/employees/${id}/toggle`, { method: 'PATCH' }),
+  toggleEmployeeActive: (id: number) =>
+    request<{ ok: boolean }>(`/api/employees/${id}/toggle`, { method: 'PATCH' }),
 
-  // Earnings
   recordEarnings: (data: {
     employeeId: number;
     fiscalYear: number;
-    month: number; // 1-12 for Nepali months (Baisakh=1)
+    month: number;
     quantity: number;
     totalEarned: number;
     advance: number;
@@ -764,7 +727,6 @@ export const api = {
   getEmployeeHistory: (employeeId: number, fiscalYear?: number) =>
     request<{ history: EarningsEntry[] }>(`/api/earnings/employee/${employeeId}${fiscalYear ? `?year=${fiscalYear}` : ''}`),
 
-  // ─── Auth ─────────────────────────────────────────────────────────────────────
   async login(username: string, password: string): Promise<{ user: { id: number; username: string; displayName: string } }> {
     const tenantSlug = localStorage.getItem('tenantSlug') ?? '';
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -794,7 +756,6 @@ export const api = {
     localStorage.removeItem('tenantSlug');
   },
 
-  // Returns
   createReturn: (input: {
     deliveryId: number;
     deliveryLineId: number;
@@ -824,5 +785,137 @@ export const api = {
         discountReason: input.discountReason,
       }),
     }),
+};
 
+export type StaffRole = 'owner' | 'staff';
+
+export type StaffUser = {
+  id: number;
+  name: string;
+  role: StaffRole;
+  active: boolean;
+  createdAt: string;
+};
+
+export type BagSummary = {
+  id: number;
+  name: string;
+  notes: string | null;
+  status: 'active' | 'archived';
+  createdAt: string;
+  totalQty: number;
+  itemCount: number;
+};
+
+export type BagDetails = BagSummary & { contents: BagContentLine[] };
+
+export type BagContentLine = {
+  id: number;
+  bagId: number;
+  variantId: number;
+  quantity: number;
+  updatedAt: string;
+  sku: string;
+  productId: number;
+  productName: string;
+  colour: string;
+  size: string;
+};
+
+export type BagStockRow = {
+  variantId: number;
+  sku: string;
+  productName: string;
+  colour: string;
+  size: string;
+  totalQty: number;
+  bags: { bagId: number; bagName: string; quantity: number }[];
+};
+
+export type CuttingRecord = {
+  id: number;
+  productId: number;
+  productName: string;
+  size: string;
+  quantity: number;
+  cutDate: string;
+  recordedById: number | null;
+  recordedByName: string | null;
+  createdAt: string;
+};
+
+export type CuttingSummaryRow = {
+  label: string;
+  totalQuantity: number;
+  batches: number;
+};
+
+export const staffApi = {
+  loginWithPin: (pin: string) =>
+    request<{ staff: { id: number; name: string; role: StaffRole } }>('/api/staff/login', {
+      method: 'POST',
+      body: JSON.stringify({ pin }),
+    }),
+  logout: () => request<{ ok: boolean }>('/api/staff/logout', { method: 'POST' }),
+  me: () => request<{ staff: { id: number; name: string; role: StaffRole } }>('/api/staff/me'),
+  listUsers: () => request<{ users: StaffUser[] }>('/api/staff/users'),
+  createUser: (data: { name: string; pin: string; role: StaffRole }) =>
+    request<{ user: StaffUser }>('/api/staff/users', { method: 'POST', body: JSON.stringify(data) }),
+  setActive: (id: number, active: boolean) =>
+    request<{ ok: boolean }>(`/api/staff/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active }),
+    }),
+};
+
+export const bagsApi = {
+  list: (search?: string) => {
+    const q = search ? `?s=${encodeURIComponent(search)}` : '';
+    return request<{ bags: BagSummary[] }>(`/api/bags${q}`);
+  },
+  get: (id: number) => request<{ bag: BagDetails }>(`/api/bags/${id}`),
+  create: (data: { name: string; notes?: string | null }) =>
+    request<{ bag: BagSummary }>('/api/bags', { method: 'POST', body: JSON.stringify(data) }),
+  addStock: (bagId: number, data: { variantId: number; quantity: number; reason?: string | null }) =>
+    request<{ bag: BagDetails }>(`/api/bags/${bagId}/add-stock`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  removeStock: (bagId: number, data: { variantId: number; quantity: number; reason: string }) =>
+    request<{ bag: BagDetails }>(`/api/bags/${bagId}/remove-stock`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  transfer: (data: {
+    fromBagId: number;
+    toBagId: number;
+    variantId: number;
+    quantity: number;
+    reason?: string | null;
+  }) =>
+    request<{ from: BagDetails; to: BagDetails }>('/api/bags/transfer', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  globalStock: (variantId?: number) => {
+    const q = variantId ? `?variantId=${variantId}` : '';
+    return request<{ rows: BagStockRow[] }>(`/api/bags/stock/global${q}`);
+  },
+};
+
+export const cuttingApi = {
+  list: (params: { startDate?: string; endDate?: string; productId?: number; limit?: number; offset?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.startDate) q.set('startDate', params.startDate);
+    if (params.endDate) q.set('endDate', params.endDate);
+    if (params.productId) q.set('productId', String(params.productId));
+    if (params.limit !== undefined) q.set('limit', String(params.limit));
+    if (params.offset !== undefined) q.set('offset', String(params.offset));
+    const qs = q.toString();
+    return request<{ records: CuttingRecord[]; total: number }>(`/api/cutting${qs ? `?${qs}` : ''}`);
+  },
+  record: (data: { productId: number; size: string; quantity: number; cutDate?: string }) =>
+    request<{ record: CuttingRecord }>('/api/cutting', { method: 'POST', body: JSON.stringify(data) }),
+  summary: (groupBy: 'product' | 'size' | 'day') =>
+    request<{ groupBy: string; rows: CuttingSummaryRow[] }>(`/api/cutting/summary?groupBy=${groupBy}`),
 };

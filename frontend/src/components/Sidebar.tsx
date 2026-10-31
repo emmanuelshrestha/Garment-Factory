@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LayoutDashboard,
   PackageSearch,
@@ -10,17 +10,17 @@ import {
   CreditCard,
   Receipt,
   Users,
-  PanelLeftClose,
-  PanelLeft,
-  X
+  X,
+  Undo2,
+  Menu
 } from 'lucide-react';
-import { ThemeToggle } from './ThemeToggle.tsx';
 
 export type TabKey = 'dashboard' | 'catalogue' | 'inventory' | 'orders' | 'deliveries' | 'invoices' | 'payments' | 'ledger' | 'cutting' | 'earnings' | 'returns';
 
 interface SidebarProps {
   activeTab: TabKey;
   onSelectTab: (tab: TabKey) => void;
+  user?: { role: 'owner' | 'staff' } | null;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   isMobileOpen?: boolean;
@@ -38,7 +38,7 @@ interface TabConfig {
 }
 
 const iconProps = {
-  size: 18,
+  size: 20,
   strokeWidth: 1.75,
 };
 
@@ -52,7 +52,7 @@ const getIcon = (key: TabKey): React.ReactNode => {
     deliveries: <Truck {...iconProps} />,
     invoices: <FileText {...iconProps} />,
     payments: <CreditCard {...iconProps} />,
-    returns: <Receipt {...iconProps} />,
+    returns: <Undo2 {...iconProps} />,
     ledger: <Receipt {...iconProps} />,
     earnings: <Users {...iconProps} />,
   };
@@ -62,6 +62,7 @@ const getIcon = (key: TabKey): React.ReactNode => {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
+  user = null,
   isCollapsed,
   onToggleCollapse,
   isMobileOpen = false,
@@ -70,7 +71,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
   shortageCount = 0,
   pendingChequesCount = 0,
 }) => {
-  const tabs: TabConfig[] = [
+  // Draggable sidebar width state with persistence
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('garment_sidebar_width');
+    const parsed = saved ? parseInt(saved, 10) : 260;
+    return isNaN(parsed) || parsed < 200 || parsed > 450 ? 260 : parsed;
+  });
+
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  const startResizing = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  const resize = useCallback((e: MouseEvent) => {
+    if (isResizing) {
+      const newWidth = Math.min(Math.max(e.clientX, 200), 450);
+      setSidebarWidth(newWidth);
+      localStorage.setItem('garment_sidebar_width', newWidth.toString());
+    }
+  }, [isResizing]);
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+      document.body.classList.add('select-none', 'cursor-col-resize');
+    } else {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+      document.body.classList.remove('select-none', 'cursor-col-resize');
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+      document.body.classList.remove('select-none', 'cursor-col-resize');
+    };
+  }, [isResizing, resize, stopResizing]);
+
+  // Tabs a floor worker must never see: money, billing, costs and reports[cite: 12].
+  const STAFF_HIDDEN: ReadonlySet<TabKey> = new Set<TabKey>([
+    'invoices',
+    'payments',
+    'ledger',
+    'earnings',
+    'returns',
+    'catalogue',
+  ]);
+
+  const allTabs: TabConfig[] = [
     { key: 'dashboard', label: 'Dashboard', icon: getIcon('dashboard') },
     { key: 'catalogue', label: 'Catalogue', icon: getIcon('catalogue') },
     { key: 'inventory', label: 'Stock Matrix', icon: getIcon('inventory'), badge: redCount },
@@ -78,11 +133,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'orders', label: 'Orders', icon: getIcon('orders'), badge: shortageCount },
     { key: 'deliveries', label: 'Deliveries', icon: getIcon('deliveries') },
     { key: 'invoices', label: 'Invoices & Billing', icon: getIcon('invoices') },
-    { key: 'payments', label: 'Payments & Cheques', icon: getIcon('payments'), badge: pendingChequesCount },
+    { key: 'payments', label: 'Customer Collections & Cheques', icon: getIcon('payments'), badge: pendingChequesCount },
     { key: 'returns', label: 'Returns', icon: getIcon('returns') },
     { key: 'ledger', label: 'Expenses', icon: getIcon('ledger') },
     { key: 'earnings', label: 'Employee Earnings', icon: getIcon('earnings') },
   ];
+
+  const tabs: TabConfig[] =
+    user?.role === 'staff' ? allTabs.filter((tab) => !STAFF_HIDDEN.has(tab.key)) : allTabs;
 
   const badgeClass = (key: TabKey): string => {
     const classes: Record<TabKey, string> = {
@@ -109,45 +167,63 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const content = (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900">
-      {/* Brand / Logo */}
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 relative">
+      {/* ── Header: Logo when open, ONLY Three Lines (Menu) when closed ── */}
       <div 
-        className={`flex items-center ${isCollapsed ? 'justify-center px-2' : 'justify-between px-4'} h-16 border-b border-slate-200 dark:border-slate-800 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition`}
-        onClick={() => handleTabClick('dashboard')}
+        className={`flex items-center ${isCollapsed && !isMobileOpen ? 'justify-center px-0' : 'justify-between px-4'} h-16 border-b border-slate-200 dark:border-slate-800 transition-colors`}
       >
-        <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-xl bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-black text-sm shadow-md">
-            G
-          </div>
-          {(!isCollapsed || isMobileOpen) && (
-            <div>
-              <span className="font-extrabold text-base tracking-tight whitespace-nowrap text-slate-900 dark:text-slate-100">GarmentOS</span>
-              <span className="hidden sm:inline-block ml-1.5 px-1.5 py-0.2 text-[9px] font-bold bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-md">ERP</span>
-            </div>
-          )}
-        </div>
-
-        {/* Mobile close button */}
-        {isMobileOpen ? (
+        {isCollapsed && !isMobileOpen ? (
+          /* ONLY THE THREE LINES WHEN COLLAPSED (NO LOGO) */
           <button
-            onClick={(e) => { e.stopPropagation(); onCloseMobile?.(); }}
-            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            type="button"
+            onClick={onToggleCollapse}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer mx-auto"
+            title="Expand Sidebar"
+            aria-label="Expand Sidebar"
           >
-            <X size={20} />
+            <Menu size={22} strokeWidth={2} />
           </button>
         ) : (
-          <button 
-            onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }} 
-            className="hidden md:flex p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition items-center justify-center"
-            title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {isCollapsed ? <PanelLeft size={18} strokeWidth={1.75} /> : <PanelLeftClose size={18} strokeWidth={1.75} />}
-          </button>
+          /* FULL LOGO & COLLAPSE BUTTON WHEN OPEN */
+          <>
+            <div 
+              className="flex items-center space-x-2.5 cursor-pointer hover:opacity-85 transition"
+              onClick={() => handleTabClick('dashboard')}
+            >
+              <div className="w-8 h-8 rounded-xl bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-black text-sm shadow-md shrink-0">
+                G
+              </div>
+              <div className="min-w-0">
+                <span className="font-extrabold text-base tracking-tight whitespace-nowrap text-slate-900 dark:text-slate-100 block">
+                  GarmentOS
+                </span>
+              </div>
+            </div>
+
+            {isMobileOpen ? (
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            ) : (
+              <button 
+                type="button"
+                onClick={onToggleCollapse} 
+                className="hidden md:flex p-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition items-center justify-center cursor-pointer"
+                title="Collapse Sidebar"
+              >
+                <Menu size={20} strokeWidth={2} />
+              </button>
+            )}
+          </>
         )}
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto">
+      {/* ── Navigation Links (Centered when collapsed, Left-aligned when open) ── */}
+      <nav className="flex-1 px-2.5 py-3 space-y-1.5 overflow-y-auto">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
           const hasBadge = tab.badge !== undefined && tab.badge > 0;
@@ -155,22 +231,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={tab.key}
+              type="button"
               onClick={() => handleTabClick(tab.key)}
               title={isCollapsed && !isMobileOpen ? tab.label : undefined}
-              className={`w-full flex items-center ${isCollapsed && !isMobileOpen ? 'justify-center px-2' : 'justify-between px-3'} py-2.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`w-full flex items-center ${
+                isCollapsed && !isMobileOpen 
+                  ? 'justify-center px-0 py-3' 
+                  : 'justify-between px-3 py-2.5 text-left'
+              } rounded-xl text-xs transition-all cursor-pointer ${
                 isActive
                   ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shadow-2xs font-bold'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100/80 dark:hover:bg-slate-800/80'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 font-semibold'
               }`}
             >
-              <div className="flex items-center gap-3">
-                <span className={`${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
+              <div className={`flex items-center min-w-0 ${isCollapsed && !isMobileOpen ? 'justify-center w-full' : 'gap-2.5 flex-1 text-left'}`}>
+                <span className={`shrink-0 flex items-center justify-center ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
                   {tab.icon}
                 </span>
-                {(!isCollapsed || isMobileOpen) && <span>{tab.label}</span>}
+                {(!isCollapsed || isMobileOpen) && (
+                  <span className="text-left leading-tight break-words min-w-0">
+                    {tab.label}
+                  </span>
+                )}
               </div>
               {(!isCollapsed || isMobileOpen) && hasBadge && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeClass(tab.key)}`}>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ml-1.5 ${badgeClass(tab.key)}`}>
                   {tab.badge}
                 </span>
               )}
@@ -179,24 +264,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Footer / Theme & System Info */}
-      <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex flex-col items-center gap-2">
-        <ThemeToggle variant={isCollapsed && !isMobileOpen ? 'compact' : 'segmented'} className="w-full justify-center" />
+      {/* ── Footer / System Info (No theme toggle) ── */}
+      {(!isCollapsed || isMobileOpen) && (
+        <div className="p-3 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500 text-center">
+          <p className="font-semibold text-slate-500 dark:text-slate-400">Garment Factory Suite</p>
+          <p className="mt-0.5">SQLite STRICT Ledger</p>
+        </div>
+      )}
 
-        {(!isCollapsed || isMobileOpen) && (
-          <div className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-0.5">
-            <p className="font-semibold text-slate-500 dark:text-slate-400">Garment Factory Suite</p>
-            <p className="mt-0.5">SQLite STRICT Ledger</p>
-          </div>
-        )}
-      </div>
+      {/* ── Draggable Right Border Resize Handle (Desktop Only) ── */}
+      {!isCollapsed && (
+        <div 
+          onMouseDown={startResizing}
+          className="hidden md:block absolute top-0 right-0 w-2 h-full cursor-col-resize hover:bg-blue-500/40 active:bg-blue-600 transition-colors z-40 group"
+          title="Click and drag to resize sidebar"
+        >
+          <div className="w-[1px] h-full mx-auto bg-transparent group-hover:bg-blue-500/80" />
+        </div>
+      )}
     </div>
   );
 
   return (
     <>
-      {/* Desktop & Tablet Sidebar */}
-      <aside className={`hidden md:flex ${isCollapsed ? 'w-16' : 'w-64'} border-r border-slate-200 dark:border-slate-800 min-h-screen flex-col shrink-0 sticky top-0 z-30 transition-all duration-200`}>
+      {/* Desktop & Tablet Dynamic Resizable Sidebar */}
+      <aside 
+        ref={sidebarRef}
+        style={{ width: isCollapsed ? 64 : sidebarWidth }}
+        className="hidden md:flex border-r border-slate-200 dark:border-slate-800 min-h-screen flex-col shrink-0 sticky top-0 z-30 transition-[width] duration-100 ease-out"
+      >
         {content}
       </aside>
 

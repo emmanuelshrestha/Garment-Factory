@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Package } from 'lucide-react';
 import { api, type StockSummary, type Product } from '../api.ts';
 
 interface InventoryMatrixProps {
@@ -28,7 +29,7 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
     ? stock.filter((s) => s.productId === selectedProductId)
     : stock;
 
-  // Extract unique sizes sorted in order
+  // Extract unique sizes and colours in consistent order
   const sizes = Array.from(new Set(productStock.map((s) => s.size)));
   const colours = Array.from(new Set(productStock.map((s) => s.colour)));
 
@@ -36,6 +37,26 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
   const matrixMap = new Map<string, StockSummary>();
   productStock.forEach((s) => {
     matrixMap.set(`${s.colour}___${s.size}`, s);
+  });
+
+  const getItemOnHand = (item?: StockSummary | null): number => {
+    if (!item) return 0;
+    const num = Number(item.onHand);
+    return isNaN(num) ? 0 : num;
+  };
+
+  // Calculate Column Totals (per size) and Grand Total
+  const sizeTotals: Record<string, number> = {};
+  let grandTotal = 0;
+
+  sizes.forEach((size) => {
+    let sizeSum = 0;
+    colours.forEach((colour) => {
+      const item = matrixMap.get(`${colour}___${size}`);
+      sizeSum += getItemOnHand(item);
+    });
+    sizeTotals[size] = sizeSum;
+    grandTotal += sizeSum;
   });
 
   const openAdjustment = (summary: StockSummary) => {
@@ -85,7 +106,7 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
           <select
             value={selectedProductId ?? ''}
             onChange={(e) => setSelectedProductId(e.target.value ? Number(e.target.value) : null)}
-            className="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:border-blue-600 focus:outline-none"
+            className="w-full sm:w-auto rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-800 dark:text-slate-100 focus:border-blue-600 focus:outline-none cursor-pointer"
           >
             {products.map((p) => (
               <option key={p.id} value={p.id}>
@@ -93,29 +114,20 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
               </option>
             ))}
           </select>
-        </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-medium">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-            <span className="text-slate-600 dark:text-slate-400">At/Below Min</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-            <span className="text-slate-600 dark:text-slate-400">Within 25%</span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span className="text-slate-600 dark:text-slate-400">Healthy Stock</span>
-          </span>
+          <a
+            href="/floor/bags"
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 transition shrink-0"
+          >
+            <Package size={14} className="text-blue-600 dark:text-blue-400" />
+            <span>Floor Bags View</span>
+          </a>
         </div>
       </div>
 
       {/* Colour x Size Matrix Grid */}
       {activeProduct && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
-          {/* Header */}
           <div className="px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between">
               <div>
@@ -129,7 +141,6 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
             </div>
           </div>
 
-          {/* Matrix Table with sticky left column on horizontal scroll */}
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
@@ -152,21 +163,20 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
                   let colourTotal = 0;
                   return (
                     <tr key={colour} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                      <td className="sticky left-0 z-10 p-2.5 text-left text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 uppercase border-r border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-850 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 z-10 p-2.5 text-left text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200 uppercase border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
                         {colour}
                       </td>
                       {sizes.map((size) => {
                         const item = matrixMap.get(`${colour}___${size}`);
                         if (!item) {
                           return (
-                            <td key={size} className="p-2.5 text-slate-300 dark:text-slate-600 text-xs border-r border-slate-100 dark:border-slate-800 text-center">
-                              —
+                            <td key={size} className="p-2.5 text-slate-300 dark:text-slate-600 text-xs border-r border-slate-100 dark:border-slate-800 text-center font-mono">
+                              0
                             </td>
                           );
                         }
-                        colourTotal += item.onHand;
-                        const isLowStock = item.band === 'red';
-                        const isNearMin = item.band === 'amber';
+                        const onHandQty = getItemOnHand(item);
+                        colourTotal += onHandQty;
 
                         return (
                           <td key={size} className="p-1.5 border-r border-slate-100 dark:border-slate-800 text-center">
@@ -175,13 +185,8 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
                               className="w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition flex flex-col items-center justify-center gap-0.5 py-1.5 px-1 cursor-pointer shadow-2xs"
                               title={`Click to adjust stock for ${item.sku}`}
                             >
-                              <span className="flex items-center gap-1.5">
-                                {(isLowStock || isNearMin) && (
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${isLowStock ? 'bg-red-500' : 'bg-amber-500'}`} />
-                                )}
-                                <span className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
-                                  {item.onHand}
-                                </span>
+                              <span className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
+                                {onHandQty}
                               </span>
                               <span className="text-[10px] text-slate-400 dark:text-slate-400 font-mono">
                                 Avail {item.available} / Min {item.minStockQty}
@@ -197,6 +202,26 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
                   );
                 })}
               </tbody>
+
+              {/* Bottom Summary Row: Size Totals & Product Grand Total */}
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/90 font-mono font-bold">
+                  <td className="sticky left-0 z-10 p-2.5 text-left text-[11px] uppercase text-slate-700 dark:text-slate-200 border-r border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shadow-[1px_0_0_0_rgba(0,0,0,0.05)]">
+                    Total
+                  </td>
+                  {sizes.map((size) => (
+                    <td
+                      key={size}
+                      className="p-2.5 text-sm text-center text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-700"
+                    >
+                      {sizeTotals[size] || 0}
+                    </td>
+                  ))}
+                  <td className="p-2.5 text-base text-center text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/40">
+                    {grandTotal}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -210,7 +235,7 @@ export const InventoryMatrix: React.FC<InventoryMatrixProps> = ({
               <div>
                 <h4 className="font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">Record Stock Adjustment</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                  {adjustmentVariant.sku} ({adjustmentVariant.productName} - {adjustmentVariant.colour} / {adjustmentVariant.size})
+                  {adjustmentVariant.sku} ({adjustmentVariant.productName} · {adjustmentVariant.colour} / {adjustmentVariant.size})
                 </p>
               </div>
               <button

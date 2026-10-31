@@ -14,7 +14,8 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   customers,
   invoices,
   onRefresh,
-}) => {
+  onCreateDelivery,
+}: OrdersListProps & { onCreateDelivery?: (order: Order) => void }) => {
   // Modal state
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
@@ -35,12 +36,9 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   const [loadingFilters, setLoadingFilters] = useState<boolean>(false);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>(orders);
 
-  // Keep filteredOrders in sync when parent refreshes
   useEffect(() => {
     setFilteredOrders(orders);
   }, [orders]);
-
-  // ── Handlers ────────────────────────────────────────────────────────────────
 
   const applyFilters = async () => {
     setLoadingFilters(true);
@@ -68,7 +66,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
 
   const handleExport = () => {
     const headers = ['Order No', 'Order Date', 'Customer', 'Status', 'Total Pieces', 'Total Amount', 'Currency'];
-    const data = filteredOrders.map(o => [
+    const data = filteredOrders.map((o) => [
       o.orderNo,
       o.orderDate,
       o.customerName,
@@ -81,7 +79,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   const handlePrintInvoice = async (orderId: number) => {
-    const invoice = invoices.find(i => i.orderId === orderId && i.status === 'issued');
+    const invoice = invoices.find((i) => i.orderId === orderId && i.status === 'issued');
     if (!invoice) {
       alert('No issued invoice found for this order.');
       return;
@@ -113,6 +111,10 @@ export const OrdersList: React.FC<OrdersListProps> = ({
   };
 
   const openDispatchModal = async (ord: Order) => {
+    if (onCreateDelivery) {
+      onCreateDelivery(ord);
+      return;
+    }
     setActionLoading(true);
     setDispatchError(null);
     try {
@@ -157,70 +159,69 @@ export const OrdersList: React.FC<OrdersListProps> = ({
     }
   };
 
-
   const getStatusBadge = (status: Order['status']) => {
     switch (status) {
-      case 'draft':             return 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
-      case 'confirmed':         return 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
-      case 'partially_delivered': return 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
-      case 'delivered':         return 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
-      case 'closed':            return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
-      case 'cancelled':         return 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 line-through';
-      default:                  return 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
+      case 'draft':
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+      case 'confirmed':
+        return 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800';
+      case 'partially_delivered':
+        return 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800';
+      case 'delivered':
+        return 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+      case 'closed':
+        return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700';
+      case 'cancelled':
+        return 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 line-through';
+      default:
+        return 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700';
     }
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
-
   return (
-    <div className="space-y-4">
-
-      {/* ── Filter Bar ──────────────────────────────────────────────────────── */}
+    <div className="space-y-4 font-sans">
+      {/* Filter Bar with Dark Scheme Date Inputs */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs p-4">
         <div className="flex flex-wrap gap-3 items-end">
-          {/* Customer */}
           <div className="flex-1 min-w-[160px]">
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Customer</label>
             <select
               value={filterCustomerId}
-              onChange={e => setFilterCustomerId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+              onChange={(e) => setFilterCustomerId(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none cursor-pointer"
             >
               <option value="">All Customers</option>
-              {customers.map(c => (
+              {customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
 
-          {/* From Date */}
           <div className="flex-1 min-w-[140px]">
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Order Date From</label>
             <input
               type="date"
               value={filterFrom}
-              onChange={e => setFilterFrom(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+              onChange={(e) => setFilterFrom(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
             />
           </div>
 
-          {/* To Date */}
           <div className="flex-1 min-w-[140px]">
             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Order Date To</label>
             <input
               type="date"
               value={filterTo}
-              onChange={e => setFilterTo(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none"
+              onChange={(e) => setFilterTo(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-sm focus:border-blue-600 focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
             />
           </div>
 
-          {/* Buttons */}
           <div className="flex flex-wrap gap-2">
             <button
               onClick={applyFilters}
               disabled={loadingFilters}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl disabled:opacity-50 transition shadow-sm"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl disabled:opacity-50 transition shadow-xs"
             >
               {loadingFilters ? 'Filtering…' : 'Apply Filter'}
             </button>
@@ -232,7 +233,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
             </button>
             <button
               onClick={handleExport}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-sm"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs"
             >
               Export CSV
             </button>
@@ -240,7 +241,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
         </div>
       </div>
 
-      {/* ── Orders Table ────────────────────────────────────────────────────── */}
+      {/* Orders Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100">Orders List</h3>
@@ -252,7 +253,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm border-collapse">
             <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th className="py-2.5 px-3 sm:px-4 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap">Order #</th>
@@ -276,7 +277,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                 filteredOrders.map((ord) => {
                   const lines = ord.lines ?? [];
                   const totalPieces = lines.reduce((s, l) => s + l.qtyOrdered, 0);
-                  const totalShortage = lines.reduce((s, l) => s + ((l as any).qtyShortage ?? 0), 0);
+                  const totalShortage = ord.totalShortageQty ?? lines.reduce((s, l) => s + (l.shortageQty ?? (l as any).qtyShortage ?? 0), 0);
                   const isDeliverable = ord.status === 'confirmed' || ord.status === 'partially_delivered';
 
                   return (
@@ -308,10 +309,10 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                               disabled={actionLoading}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold disabled:opacity-50 transition shadow-xs"
                             >
-                              {actionLoading ? 'Loading...' : 'Dispatch'}
+                              Dispatch
                             </button>
                           )}
-                          {invoices.some(i => i.orderId === ord.id && i.status === 'issued') && (
+                          {invoices.some((i) => i.orderId === ord.id && i.status === 'issued') && (
                             <button
                               onClick={() => handlePrintInvoice(ord.id)}
                               className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold transition"
@@ -338,7 +339,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
         </div>
       </div>
 
-      {/* ── Cancel Order Modal ───────────────────────────────────────────────── */}
+      {/* Cancel Order Modal */}
       {showCancelModal && selectedOrder && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[90vh] overflow-y-auto">
@@ -355,7 +356,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Reason for Cancellation (Required):</label>
                 <textarea
                   value={cancelReason}
-                  onChange={e => setCancelReason(e.target.value)}
+                  onChange={(e) => setCancelReason(e.target.value)}
                   placeholder="e.g. Customer cancelled order"
                   rows={3}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-blue-600 focus:outline-none"
@@ -373,7 +374,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
         </div>
       )}
 
-      {/* ── Print Invoice Modal ──────────────────────────────────────────────── */}
+      {/* Print Invoice Modal */}
       {printInvoice && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
@@ -417,7 +418,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {(printInvoice.lines ?? []).map(l => (
+                    {(printInvoice.lines ?? []).map((l) => (
                       <tr key={l.id}>
                         <td className="py-2.5 px-3 font-semibold">{l.description}</td>
                         <td className="py-2.5 px-3 text-right font-bold">{l.qty}</td>
@@ -465,7 +466,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
             </div>
             {dispatchError && <div className="p-3 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold">{dispatchError}</div>}
             <form onSubmit={handleCreateAndDispatch} className="space-y-3">
-              {(dispatchOrder.lines ?? []).filter(l => l.qtyOrdered - l.qtyDelivered > 0).map(l => (
+              {(dispatchOrder.lines ?? []).filter((l) => l.qtyOrdered - l.qtyDelivered > 0).map((l) => (
                 <div key={l.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl">
                   <div>
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{l.productName} — {l.colour} / {l.size}</span>
@@ -476,7 +477,7 @@ export const OrdersList: React.FC<OrdersListProps> = ({
                     min="0"
                     max={l.qtyOrdered - l.qtyDelivered}
                     value={dispatchLines[l.id] ?? ""}
-                    onChange={e => setDispatchLines(prev => ({ ...prev, [l.id]: Number(e.target.value) }))}
+                    onChange={(e) => setDispatchLines((prev) => ({ ...prev, [l.id]: Number(e.target.value) }))}
                     className="w-20 px-2 py-1 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg text-sm font-mono text-right focus:border-blue-600 focus:outline-none"
                     placeholder="0"
                   />
