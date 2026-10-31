@@ -46,6 +46,7 @@ export type ProductVariant = {
   sku: string;
   colourId: number;
   colour: string;
+  color?: string;
   sizeId: number;
   size: string;
   priceMinor: number | null;
@@ -94,15 +95,19 @@ export type Customer = {
 export type OrderLine = {
   id: number;
   variantId: number;
+  productId?: number;
+  product_id?: number;
   sku: string;
   productName: string;
   colour: string;
+  color?: string;
   size: string;
   qtyOrdered: number;
   unitPriceMinor: number;
   lineTotalMinor: number;
   qtyAllocated: number;
   qtyDelivered: number;
+  deliveredQty?: number;
   shortageQty: number;
   note: string | null;
 };
@@ -127,14 +132,18 @@ export type DeliveryLine = {
   id: number;
   orderLineId: number;
   variantId: number;
+  productId?: number;
+  product_id?: number;
   sku: string;
   productName: string;
   colour: string;
+  color?: string;
   size: string;
   qty: number;
   movementId: number | null;
   qtyOrdered: number;
   qtyDeliveredOnOrderLine: number;
+  deliveredQty?: number;
 };
 
 export type Delivery = {
@@ -321,6 +330,7 @@ export type MonthlyEarningsSummary = {
   others: number;
   openingDue: number;
   closingDue: number;
+  note?: string | null;
 };
 
 export type DashboardSummary = {

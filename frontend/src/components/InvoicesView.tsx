@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  FileText, Printer, Search, X, Check, 
-  Calendar, DollarSign, AlertTriangle, Building2, 
-  PlusCircle, Tag, Scale, Clock, CheckCircle2
+  FileText, Printer, AlertTriangle, PlusCircle
 } from 'lucide-react';
 import { api, type Invoice, type BillableDeliveryLine, type Customer, formatMoney, formatDate } from '../api.ts';
 import { downloadCSV } from '../utils/csv.ts';

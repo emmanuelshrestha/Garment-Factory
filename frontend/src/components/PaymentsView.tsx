@@ -7,9 +7,9 @@ import {
 } from '../api.ts';
 import { downloadCSV } from '../utils/csv.ts';
 import { 
-  DollarSign, FileText, CheckCircle2, AlertTriangle, Printer, 
-  Clock, Building2, Check, X, RotateCcw, Sparkles, ArrowRight, 
-  ShieldCheck, HelpCircle, Layers, Search, Plus, Eye, User, Phone, MapPin, ArrowLeft, Package
+  DollarSign, AlertTriangle, Printer, 
+  Sparkles, ArrowRight, 
+  ShieldCheck, Layers, Search, Plus, Eye, User, Phone, MapPin, ArrowLeft
 } from 'lucide-react';
 
 interface PaymentsViewProps {

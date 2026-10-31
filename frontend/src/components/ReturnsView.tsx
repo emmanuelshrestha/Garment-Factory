@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   RotateCcw, AlertTriangle, CheckCircle2, Printer, 
-  Search, X, FileText, Package, ArrowRight, ShieldAlert,
-  Calendar, User, Tag, HelpCircle, Layers
+  FileText, Package
 } from 'lucide-react';
 import { 
   api, 

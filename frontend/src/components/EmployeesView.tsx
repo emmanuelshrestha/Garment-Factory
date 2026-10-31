@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Users, UserPlus, Search, X, Check, Power, 
-  Hash, Calendar, AlertCircle, RefreshCw 
+  Users, UserPlus, Search, X, Check, Power, RefreshCw 
 } from 'lucide-react';
 import { api, type Employee } from '../api.ts';
 
@@ -14,7 +13,6 @@ interface EmployeesViewProps {
 export const EmployeesView: React.FC<EmployeesViewProps> = ({
   onEmployeeAdded,
   onEmployeeToggled,
-  onSelectEmployee,
 }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState<boolean>(true);

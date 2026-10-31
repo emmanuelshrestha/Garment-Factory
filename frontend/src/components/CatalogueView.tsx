@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Scissors, Tag, Layers, Search, PlusCircle, Check, 
-  X, RefreshCw, Eye, Edit2, Power, Trash2, Image as ImageIcon,
-  ChevronLeft, ChevronRight, CheckSquare, Square, GripVertical,
-  ArrowLeft, CheckCircle2, AlertTriangle, Building2, SlidersHorizontal,
+  Tag, Layers, Search, PlusCircle, 
+  X, Eye, Edit2, Power, Trash2, Image as ImageIcon,
+  GripVertical,
+  ArrowLeft, CheckCircle2, AlertTriangle, SlidersHorizontal,
   Palette, Ruler, LayoutGrid, List
 } from 'lucide-react';
 import { api, type Product, type Colour, type Size, type Currency, type ProductVariant, formatMoney } from '../api';
@@ -1586,7 +1586,9 @@ const ProductsPanel: React.FC<ProductsPanelProps> = ({ openConfirmDialog }) => {
                         multiple
                         className="hidden"
                         onChange={(e) => {
-                          if (e.dataTransfer?.files || e.target.files) handleFilesSelected(e.target.files!);
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleFilesSelected(e.target.files);
+                          }
                         }}
                       />
                       <ImageIcon className="w-5 h-5 text-slate-400 mb-1" />

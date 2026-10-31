@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  PlusCircle, UserPlus, Search, X, Check, RefreshCw, 
-  CreditCard, ArrowDownLeft, ArrowUpRight, Building2, 
-  Tag, Layers, DollarSign, Calendar, ChevronRight, 
-  Printer, ArrowLeft, FileText, Scale, Phone, MapPin
+  PlusCircle, UserPlus, Search, X, RefreshCw, 
+  CreditCard, ArrowDownLeft, ArrowUpRight,  
+  Layers, DollarSign, Calendar, ChevronRight, 
+  Printer, ArrowLeft, Scale, Phone, MapPin
 } from 'lucide-react';
 import { api, formatMoney, type Purchase, type Expense } from '../api.ts';
 

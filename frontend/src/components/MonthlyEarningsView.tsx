@@ -176,7 +176,7 @@ export const MonthlyEarningsView: React.FC<MonthlyEarningsViewProps> = ({
 
       summaries.forEach((s) => {
         incomingIds.push(s.employeeId);
-        const { advance, paid, note } = parseNotePayload(s.note, s.advance);
+        const { advance, paid, note } = parseNotePayload(s.note ?? undefined, s.advance);
 
         initialRows[s.employeeId] = {
           employeeId: s.employeeId,

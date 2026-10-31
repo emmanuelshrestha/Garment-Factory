@@ -3,8 +3,8 @@ import {
   PlusCircle, Search, X, RefreshCw, 
   CreditCard, Calendar, Tag, FileText, Check,
   Building2, Truck, Scissors, Coffee, Zap,
-  ArrowRight, ArrowDownLeft, ArrowUpRight,
-  Scale, DollarSign
+  ArrowDownLeft, ArrowUpRight,
+  Scale
 } from 'lucide-react';
 import { api, formatMoney, formatDate, type Expense, type PaymentMethod } from '../api.ts';
 

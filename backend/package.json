@@ -18,6 +18,7 @@
     "create-tenant": "node scripts/create-tenant.ts",
     "list-tenants": "node scripts/list-tenants.ts"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/node": "^26.6.6"
+  }
 }

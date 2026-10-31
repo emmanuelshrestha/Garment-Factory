@@ -121,7 +121,7 @@ export const EmployeeYearlyView: React.FC<EmployeeYearlyViewProps> = ({ employee
     let cashPaid = 0;
 
     history.forEach((entry) => {
-      const parsed = parseStoredNote(entry.note, entry.advance);
+      const parsed = parseStoredNote(entry.note ?? undefined, entry.advance);
       grossEarned += entry.totalEarned;
       advancesTaken += parsed.advancePaisa;
       cashPaid += parsed.paidPaisa;
@@ -146,7 +146,7 @@ export const EmployeeYearlyView: React.FC<EmployeeYearlyViewProps> = ({ employee
     return NEPALI_MONTH_NAMES.map((name, idx) => {
       const monthNum = idx + 1;
       const record = recordedMap.get(monthNum) || null;
-      const parsed = record ? parseStoredNote(record.note, record.advance) : null;
+      const parsed = record ? parseStoredNote(record.note ?? undefined, record.advance) : null;
       const netPayable = record
         ? record.openingDue + record.totalEarned - (parsed?.advancePaisa || 0) + record.others
         : 0;

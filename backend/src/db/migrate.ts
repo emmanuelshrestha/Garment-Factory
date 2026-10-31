@@ -9,11 +9,32 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type Db, transaction } from './sqlite.ts';
 
-const MIGRATIONS_DIR = join(import.meta.dirname, 'migrations');
+// Standard ESM directory resolution that avoids TypeScript type errors
+const currentDir = dirname(fileURLToPath(import.meta.url));
+
+function resolveMigrationsDir(): string {
+  const candidates = [
+    join(currentDir, 'migrations'),
+    join(process.cwd(), 'src', 'db', 'migrations'),
+    join(process.cwd(), 'backend', 'src', 'db', 'migrations'),
+    join(process.cwd(), 'migrations'),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return join(currentDir, 'migrations');
+}
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 
 export type MigrationResult = {
   applied: string[];
@@ -22,6 +43,10 @@ export type MigrationResult = {
 
 export function migrate(db: Db, options: { verbose?: boolean } = {}): MigrationResult {
   ensureMigrationsTable(db);
+
+  if (!existsSync(MIGRATIONS_DIR)) {
+    throw new Error(`Migrations directory does not exist: ${MIGRATIONS_DIR}`);
+  }
 
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
@@ -93,8 +118,6 @@ if (process.argv[1]?.includes('migrate')) {
   void (async () => {
     const { config } = await import('../config.ts');
     const { openDatabase, closeDatabase } = await import('./sqlite.ts');
-    const { mkdirSync } = await import('node:fs');
-    const { dirname } = await import('node:path');
 
     mkdirSync(dirname(config.databasePath), { recursive: true });
     const db = openDatabase(config.databasePath);

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Truck, Package, Printer, Search, X, Check, 
-  Calendar, User, FileText, ArrowLeft, AlertTriangle, 
-  CheckCircle2, Building2, Phone, Hash, Plus, Sparkles, RotateCcw, Layers, Clock, Eye
+  Truck, Package, Printer,
+  FileText, AlertTriangle, 
+  Layers, Clock
 } from 'lucide-react';
-import { api, type Delivery, type Order, type Customer, formatDate, formatMoney } from '../api';
+import { api, type Delivery, type Order, type Customer, formatDate} from '../api';
 import { downloadCSV } from '../utils/csv.ts';
 
 interface DeliveriesViewProps {
@@ -331,8 +331,8 @@ export const DeliveriesView: React.FC<DeliveriesViewProps> = ({
       const current = map.get(styleKey) || {
         productKey: styleKey,
         productName: styleName,
-        sizes: [],
-        colours: [],
+        sizes: [] as string[],
+        colours: [] as string[],
         cellMap: new Map(),
         totalRemainingInStyle: 0,
         totalOrderedInStyle: 0,
