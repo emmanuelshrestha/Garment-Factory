@@ -1196,6 +1196,211 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({
           )}
         </div>
       )}
+      
+      {/* ─── RECORD MONEY IN MODAL ─── */}
+      {showRecordModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 text-xs font-sans">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div>
+                <h4 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <DollarSign size={18} className="text-emerald-600 dark:text-emerald-400" />
+                  Record Customer Collection
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Record money received via cash, bank transfer, or post-dated cheque.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecordModal(false)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 font-bold text-lg p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle size={14} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRecordPaymentSubmit} className="space-y-3.5">
+              {/* Customer Selector */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Customer / Buyer *
+                </label>
+                <select
+                  value={customerId}
+                  onChange={(e) => {
+                    const cId = Number(e.target.value);
+                    setCustomerId(cId);
+                    const selected = customers.find((c) => c.id === cId);
+                    if (selected?.defaultCurrency) setCurrency(selected.defaultCurrency);
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl text-xs font-semibold focus:border-blue-600 focus:outline-none cursor-pointer"
+                  required
+                >
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Amount & Currency */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Amount Received *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    value={amountMajor}
+                    onChange={(e) => setAmountMajor(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl font-mono text-sm font-bold focus:border-blue-600 focus:outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Currency
+                  </label>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value as Currency)}
+                    className="w-full px-2.5 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl font-bold focus:border-blue-600 focus:outline-none cursor-pointer"
+                  >
+                    <option value="NPR">NPR</option>
+                    <option value="INR">INR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Payment Method & Received Date */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Payment Method
+                  </label>
+                  <select
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl font-semibold focus:border-blue-600 focus:outline-none cursor-pointer"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="bank_transfer">Bank Transfer / Fonepay</option>
+                    <option value="cheque">Cheque (PDC)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Receipt Date
+                  </label>
+                  <input
+                    type="date"
+                    value={receivedAt}
+                    onChange={(e) => setReceivedAt(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:border-blue-600 focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Cheque Specific Fields */}
+              {method === 'cheque' && (
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-xl space-y-2">
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-amber-700 dark:text-amber-400 block">
+                    Cheque Particulars
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Cheque # *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 048291"
+                        value={chequeNo}
+                        onChange={(e) => setChequeNo(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg font-mono focus:border-blue-600 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Maturity Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={chequeDate}
+                        onChange={(e) => setChequeDate(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg focus:border-blue-600 focus:outline-none [color-scheme:light] dark:[color-scheme:dark]"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bank Transfer Reference */}
+              {method === 'bank_transfer' && (
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Bank Reference / Txn ID
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Fonepay Ref #9812938 / Nabil Bank"
+                    value={bankReference}
+                    onChange={(e) => setBankReference(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Note / Remarks */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Note / Remarks (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Advance for Lot B, festive payment"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl focus:border-blue-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowRecordModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 transition shadow-xs cursor-pointer"
+                >
+                  {submitting ? 'Recording…' : 'Save Money Receipt'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ─── ALLOCATION INSPECTOR MODAL (Where Did The Money Go?) ─── */}
       {showInspectorModal && inspectingPayment && (
